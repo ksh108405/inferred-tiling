@@ -7,7 +7,7 @@ from PIL import Image
 
 # Augmentation for Training
 class Augmentation(object):
-    def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], jitter=0.2, hue=0.1, saturation=1.5, exposure=1.5):
+    def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], jitter=0.2, hue=0.1, saturation=1.5, exposure=1.5, img_processing='PIL'):
         self.img_size = img_size
         self.pixel_mean = pixel_mean
         self.pixel_std = pixel_std
@@ -15,6 +15,7 @@ class Augmentation(object):
         self.hue = hue
         self.saturation = saturation
         self.exposure = exposure
+        self.img_processing = img_processing
 
 
     def rand_scale(self, s):
@@ -60,10 +61,10 @@ class Augmentation(object):
         dw =int(width * self.jitter)
         dh =int(height * self.jitter)
 
-        pleft  = random.randint(-dw, dw)
-        pright = random.randint(-dw, dw)
-        ptop   = random.randint(-dh, dh)
-        pbot   = random.randint(-dh, dh)
+        pleft  = random.randint(0, dw)
+        pright = random.randint(0, dw)
+        ptop   = random.randint(0, dh)
+        pbot   = random.randint(0, dh)
 
         swidth =  width - pleft - pright
         sheight = height - ptop - pbot
@@ -75,7 +76,10 @@ class Augmentation(object):
         dy = (float(ptop) / height)/sy
 
         # random crop
-        cropped_clip = [img.crop((pleft, ptop, pleft + swidth - 1, ptop + sheight - 1)) for img in video_clip]
+        if self.img_processing == 'PIL':
+            cropped_clip = [img.crop((pleft, ptop, swidth - 1, sheight - 1)) for img in video_clip]
+        elif self.img_processing == 'pyvips':
+            cropped_clip = [img.crop(pleft, ptop, swidth - 1, sheight - 1) for img in video_clip]
 
         return cropped_clip, dx, dy, sx, sy
 
@@ -118,7 +122,11 @@ class Augmentation(object):
         video_clip, dx, dy, sx, sy = self.random_crop(video_clip, ow, oh)
 
         # resize
-        video_clip = [img.resize([self.img_size, self.img_size]) for img in video_clip]
+        if self.img_processing == 'PIL':
+            video_clip = [img.resize([self.img_size, self.img_size]) for img in video_clip]
+        elif self.img_processing == 'pyvips':
+            video_clip = [img.thumbnail_image(self.img_size, height=self.img_size, size='force') for img in video_clip]
+            video_clip = [Image.fromarray(image.numpy()).convert('RGB') for image in video_clip]
 
         # random flip
         flip = random.randint(0, 1)
@@ -145,10 +153,11 @@ class Augmentation(object):
 
 # Transform for Testing
 class BaseTransform(object):
-    def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.]):
+    def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], img_processing='PIL'):
         self.img_size = img_size
         self.pixel_mean = pixel_mean
         self.pixel_std = pixel_std
+        self.img_processing = img_processing
 
     def to_tensor(self, video_clip):
         return [F.normalize(F.to_tensor(image), self.pixel_mean, self.pixel_std) for image in video_clip]
@@ -159,7 +168,11 @@ class BaseTransform(object):
         ow = video_clip[0].width
 
         # resize
-        video_clip = [img.resize([self.img_size, self.img_size]) for img in video_clip]
+        if self.img_processing == 'PIL':
+            video_clip = [img.resize([self.img_size, self.img_size]) for img in video_clip]
+        elif self.img_processing == 'pyvips':
+            video_clip = [img.thumbnail_image(self.img_size, self.img_size) for img in video_clip]
+            video_clip = [Image.fromarray(image.numpy()) for image in video_clip]
 
         # normalize target
         if target is not None:

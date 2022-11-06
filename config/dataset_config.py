@@ -54,13 +54,14 @@ dataset_config = {
                     'Skiing',         'Skijet',            'SoccerJuggling',    'Surfing',
                     'TennisSwing',    'TrampolineJumping', 'VolleyballSpiking', 'WalkingWithDog'
                 ),
+        'img_processing': 'PIL',
     },
 
     'aihub_park': {
         # dataset
-        'data_root': '/mnt/e/datasets/grad_proj/',
+        'data_root': '/media/seokhoon/dataset_drive/grad_proj',
         # 'data_root': 'D:/python_work/spatial-temporal_action_detection/dataset/ucf24',
-        'gt_folder': '/mnt/e/datasets/grad_proj/groundtruths_park/',
+        'gt_folder': '/media/seokhoon/dataset_drive/grad_proj/groundtruths_park/',
         # input size
         'train_size': 224,
         'test_size': 224,
@@ -103,6 +104,7 @@ dataset_config = {
         'label_map': (
             'FlyerGiving', 'Littering', 'Smoking', 'Vandalism'
         ),
+        'img_processing': 'pyvips',
     },
 
     'jhmdb21': {
@@ -156,6 +158,7 @@ dataset_config = {
                     'stand',        'swing_baseball', 'throw',       'walk',
                     'wave'
                 ),
+        'img_processing': 'PIL',
     },
     
     'ava_v2.2':{
@@ -228,6 +231,7 @@ dataset_config = {
                     'kick (a person)', 'kiss (a person)', 'lift (a person)', 'listen to (a person)', 'play with kids',                  # 71-75
                     'push (another person)', 'sing to (e.g., self, a person, a group)', 'take (an object) from (a person)',             # 76-78
                     'talk to (e.g., self, a person, a group)', 'watch (a person)'                                                       # 79-80
-                ),        
+                ),
+        'img_processing': 'PIL',
     }
 }

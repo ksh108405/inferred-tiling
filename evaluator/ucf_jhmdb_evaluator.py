@@ -38,7 +38,6 @@ class UCF_JHMDB_Evaluator(object):
         self.gt_folder = gt_folder
         self.save_path = save_path
 
-        self.gt_file = os.path.join(data_root, 'splitfiles/finalAnnots.mat')
         self.testlist = os.path.join(data_root, 'splitfiles/testlist01.txt')
 
         # dataset
@@ -61,6 +60,7 @@ class UCF_JHMDB_Evaluator(object):
                 len_clip=len_clip,
                 sampling_rate=1)
             self.num_classes = self.testset.num_classes
+            self.gt_file = os.path.join(data_root, 'splitfiles/finalAnnots.mat')
 
 
     def evaluate_frame_map(self, model, epoch=1, show_pr_curve=False):

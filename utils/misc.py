@@ -27,16 +27,18 @@ def build_dataset(d_cfg, args, is_train=False):
         jitter=d_cfg['jitter'],
         hue=d_cfg['hue'],
         saturation=d_cfg['saturation'],
-        exposure=d_cfg['exposure']
+        exposure=d_cfg['exposure'],
+        img_processing=d_cfg['img_processing']
         )
     basetransform = BaseTransform(
         img_size=d_cfg['test_size'],
         pixel_mean=d_cfg['pixel_mean'],
         pixel_std=d_cfg['pixel_std'],
+        img_processing=d_cfg['img_processing']
         )
 
     # dataset
-    if args.dataset in ['ucf24', 'jhmdb21']:
+    if args.dataset in ['ucf24', 'jhmdb21', 'aihub_park']:
         # dataset
         dataset = UCF_JHMDB_Dataset(
             data_root=d_cfg['data_root'],
@@ -45,7 +47,8 @@ def build_dataset(d_cfg, args, is_train=False):
             transform=augmentation,
             is_train=is_train,
             len_clip=d_cfg['len_clip'],
-            sampling_rate=d_cfg['sampling_rate']
+            sampling_rate=d_cfg['sampling_rate'],
+            img_processing=d_cfg['img_processing']
             )
         num_classes = dataset.num_classes
 

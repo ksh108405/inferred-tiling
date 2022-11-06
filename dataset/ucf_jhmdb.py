@@ -10,6 +10,7 @@ import glob
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
+import pyvips
 
 
 # Dataset for UCF24 & JHMDB
@@ -21,7 +22,8 @@ class UCF_JHMDB_Dataset(Dataset):
                  transform=None,
                  is_train=False,
                  len_clip=16,
-                 sampling_rate=1):
+                 sampling_rate=1,
+                 img_processing='pyvips'):
         self.data_root = data_root
         self.dataset = dataset
         self.transform = transform
@@ -30,6 +32,7 @@ class UCF_JHMDB_Dataset(Dataset):
         self.img_size = img_size
         self.len_clip = len_clip
         self.sampling_rate = sampling_rate
+        self.img_processing = img_processing
 
         if self.is_train:
             self.split_list = 'trainlist.txt'
@@ -106,7 +109,11 @@ class UCF_JHMDB_Dataset(Dataset):
             elif self.dataset == 'aihub_park':
                 path_tmp = os.path.join(self.data_root, 'rgb-images', img_split[1], img_split[2],
                                         '{:05d}.jpg'.format(img_id_temp))
-            frame = Image.open(path_tmp).convert('RGB')
+
+            if self.img_processing == 'PIL':
+                frame = Image.open(path_tmp).convert('RGB')  # PIL
+            elif self.img_processing == 'pyvips':
+                frame = pyvips.Image.new_from_file(path_tmp, access='sequential')  # pyvips
             ow, oh = frame.width, frame.height
 
             video_clip.append(frame)
