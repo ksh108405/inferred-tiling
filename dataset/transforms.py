@@ -77,9 +77,9 @@ class Augmentation(object):
 
         # random crop
         if self.img_processing == 'PIL':
-            cropped_clip = [img.crop((pleft, ptop, swidth - 1, sheight - 1)) for img in video_clip]
+            cropped_clip = [img.crop((pleft, ptop, swidth, sheight)) for img in video_clip]
         elif self.img_processing == 'pyvips':
-            cropped_clip = [img.crop(pleft, ptop, swidth - 1, sheight - 1) for img in video_clip]
+            cropped_clip = [img.crop(pleft, ptop, swidth, sheight) for img in video_clip]
 
         return cropped_clip, dx, dy, sx, sy
 
