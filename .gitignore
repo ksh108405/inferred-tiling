@@ -5,3 +5,6 @@
 __pycache__
 det_results
 .vscode
+/dataset/demo/ucf24_demo/
+/img_files/
+/.idea/
