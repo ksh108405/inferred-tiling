@@ -61,10 +61,16 @@ class Augmentation(object):
         dw =int(width * self.jitter)
         dh =int(height * self.jitter)
 
-        pleft  = random.randint(0, dw)
-        pright = random.randint(0, dw)
-        ptop   = random.randint(0, dh)
-        pbot   = random.randint(0, dh)
+        if self.img_processing == 'PIL':
+            pleft  = random.randint(-dw, dw)
+            pright = random.randint(-dw, dw)
+            ptop   = random.randint(-dh, dh)
+            pbot   = random.randint(-dh, dh)
+        elif self.img_processing == 'pyvips':
+            pleft  = random.randint(0, dw)
+            pright = random.randint(0, dw)
+            ptop   = random.randint(0, dh)
+            pbot   = random.randint(0, dh)
 
         swidth =  width - pleft - pright
         sheight = height - ptop - pbot
