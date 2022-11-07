@@ -111,13 +111,22 @@ class UCF_JHMDB_Evaluator(object):
                             os.mkdir('results/ucf_detections/'+self.model_name)
                         if not os.path.exists(current_dir):
                             os.mkdir(current_dir)
-                    else:
+                    elif self.dataset == 'jhmdb21':
                         detection_path = os.path.join('results', 'jhmdb_detections',  self.model_name, 'detections_' + str(epoch), frame_id)
                         current_dir = os.path.join('results', 'jhmdb_detections',  self.model_name, 'detections_' + str(epoch))
                         if not os.path.exists('results/jhmdb_detections/'):
                             os.mkdir('results/jhmdb_detections/')
                         if not os.path.exists('results/jhmdb_detections/'+self.model_name):
                             os.mkdir('results/jhmdb_detections/'+self.model_name)
+                        if not os.path.exists(current_dir):
+                            os.mkdir(current_dir)
+                    elif self.dataset == 'aihub_park':
+                        detection_path = os.path.join('results', 'park_detections',  self.model_name, 'detections_' + str(epoch), frame_id)
+                        current_dir = os.path.join('results', 'park_detections',  self.model_name, 'detections_' + str(epoch))
+                        if not os.path.exists('results/park_detections/'):
+                            os.mkdir('results/park_detections/')
+                        if not os.path.exists('results/park_detections/'+self.model_name):
+                            os.mkdir('results/park_detections/'+self.model_name)
                         if not os.path.exists(current_dir):
                             os.mkdir(current_dir)
 
