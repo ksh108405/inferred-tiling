@@ -104,7 +104,7 @@ dataset_config = {
         'label_map': (
             'FlyerGiving', 'Littering', 'Smoking', 'Vandalism'
         ),
-        'img_processing': 'pyvips',
+        'img_processing': 'PIL',
     },
 
     'jhmdb21': {
