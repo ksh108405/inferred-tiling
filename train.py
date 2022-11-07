@@ -45,7 +45,7 @@ def parse_args():
                         help="Adopting mix precision training.")
 
     # Evaluation
-    parser.add_argument('--eval', action='store_true', default=False,
+    parser.add_argument('--eval', action='store_true', default=True,
                         help='do evaluation during training.')
     parser.add_argument('--eval_epoch', default=1, type=int,
                         help='after eval epoch, the model is evaluated on val dataset.')
