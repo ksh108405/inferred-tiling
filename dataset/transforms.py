@@ -57,20 +57,26 @@ class Augmentation(object):
         return video_clip_
 
 
-    def random_crop(self, video_clip, width, height):
-        dw =int(width * self.jitter)
-        dh =int(height * self.jitter)
+    def random_crop(self, target, video_clip, width, height):
+        dw = int(width * self.jitter)
+        dh = int(height * self.jitter)
+
+        # Adjust to not crop any subset of key-frame bbox
+        bbox_min_left = np.min(target[..., 0])
+        bbox_min_top = np.min(target[..., 1])
+        bbox_max_right = np.max(target[..., 2])
+        bbox_max_bottom = np.max(target[..., 3])
 
         if self.img_processing == 'PIL':
-            pleft  = random.randint(-dw, dw)
-            pright = random.randint(-dw, dw)
-            ptop   = random.randint(-dh, dh)
-            pbot   = random.randint(-dh, dh)
+            pleft = random.randint(-dw, int(np.minimum(dw, bbox_min_left)))
+            pright = random.randint(-dw, int(np.minimum(dw, width - bbox_max_right)))
+            ptop = random.randint(-dh, int(np.minimum(dh, bbox_min_top)))
+            pbot = random.randint(-dh, int(np.minimum(dh, height - bbox_max_bottom)))
         elif self.img_processing == 'pyvips':
-            pleft  = random.randint(0, dw)
-            pright = random.randint(0, dw)
-            ptop   = random.randint(0, dh)
-            pbot   = random.randint(0, dh)
+            pleft = random.randint(0, int(np.minimum(dw, bbox_min_left)))
+            pright = random.randint(0, int(np.minimum(dw, width - bbox_max_right)))
+            ptop = random.randint(0, int(np.minimum(dh, bbox_min_top)))
+            pbot = random.randint(0, int(np.minimum(dh, height - bbox_max_bottom)))
 
         swidth =  width - pleft - pright
         sheight = height - ptop - pbot
@@ -125,7 +131,7 @@ class Augmentation(object):
         ow = video_clip[0].width
         
         # random crop
-        video_clip, dx, dy, sx, sy = self.random_crop(video_clip, ow, oh)
+        video_clip, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
 
         # resize
         if self.img_processing == 'PIL':
