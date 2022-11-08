@@ -301,7 +301,10 @@ def train():
                 # save model
                 print('Saving state, epoch:', epoch + 1)
                 weight_name = '{}_epoch_{}.pth'.format(args.version, epoch + 1)
-                checkpoint_path = os.path.join(path_to_save, weight_name)
+                if evaluator is None:
+                    checkpoint_path = os.path.join(path_to_save, weight_name)
+                else:
+                    checkpoint_path = os.path.join(weight_name)
                 torch.save({'model': model_eval.state_dict(),
                             'epoch': epoch,
                             'args': args},
