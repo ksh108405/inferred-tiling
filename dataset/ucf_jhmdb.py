@@ -23,7 +23,7 @@ class UCF_JHMDB_Dataset(Dataset):
                  is_train=False,
                  len_clip=16,
                  sampling_rate=1,
-                 img_processing='pyvips'):
+                 img_processing='PIL'):
         self.data_root = data_root
         self.dataset = dataset
         self.transform = transform
