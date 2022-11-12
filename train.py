@@ -45,7 +45,7 @@ def parse_args():
                         help="Adopting mix precision training.")
 
     # Evaluation
-    parser.add_argument('--eval', action='store_true', default=True,
+    parser.add_argument('--eval', action='store_true', default=False,
                         help='do evaluation during training.')
     parser.add_argument('--eval_epoch', default=1, type=int,
                         help='after eval epoch, the model is evaluated on val dataset.')
@@ -227,7 +227,7 @@ def train():
             losses = loss_dict['losses']
             losses = losses / d_cfg['accumulate']
 
-            # reduce            
+            # reduce
             loss_dict_reduced = distributed_utils.reduce_dict(loss_dict)
 
             # check loss
@@ -300,15 +300,16 @@ def train():
 
                 # save model
                 print('Saving state, epoch:', epoch + 1)
-                weight_name = '{}_epoch_{}.pth'.format(args.version, epoch + 1)
-                if evaluator is None:
-                    checkpoint_path = os.path.join(path_to_save, weight_name)
-                else:
-                    checkpoint_path = os.path.join(weight_name)
+                weight_name = '{}_epoch_{}'.format(args.version, epoch + 1)
+                checkpoint_path = os.path.join(path_to_save, weight_name)
+                file_dup = 0
+                while os.path.isfile(checkpoint_path + '.pth'):
+                    file_dup += 1
+                    checkpoint_path += f'_{file_dup}'
                 torch.save({'model': model_eval.state_dict(),
                             'epoch': epoch,
                             'args': args},
-                           checkpoint_path)
+                           checkpoint_path + '.pth')
 
             if args.distributed:
                 # wait for all processes to synchronize
