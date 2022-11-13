@@ -15,7 +15,7 @@ from evaluator.ucf_jhmdb_evaluator import UCF_JHMDB_Evaluator
 from evaluator.ava_evaluator import AVA_Evaluator
 
 
-def build_dataset(d_cfg, args, is_train=False):
+def build_dataset(d_cfg, args, is_train=False, inferred_tiling=False):
     """
         d_cfg: dataset config
     """
@@ -28,14 +28,15 @@ def build_dataset(d_cfg, args, is_train=False):
         hue=d_cfg['hue'],
         saturation=d_cfg['saturation'],
         exposure=d_cfg['exposure'],
-        img_processing=d_cfg['img_processing']
-        )
+        img_processing=d_cfg['img_processing'],
+        inferred_tiling=(inferred_tiling and is_train)
+    )
     basetransform = BaseTransform(
         img_size=d_cfg['test_size'],
         pixel_mean=d_cfg['pixel_mean'],
         pixel_std=d_cfg['pixel_std'],
         img_processing=d_cfg['img_processing']
-        )
+    )
 
     # dataset
     if args.dataset in ['ucf24', 'jhmdb21', 'aihub_park']:
@@ -48,8 +49,9 @@ def build_dataset(d_cfg, args, is_train=False):
             is_train=is_train,
             len_clip=d_cfg['len_clip'],
             sampling_rate=d_cfg['sampling_rate'],
-            img_processing=d_cfg['img_processing']
-            )
+            img_processing=d_cfg['img_processing'],
+            inferred_tiling=inferred_tiling
+        )
         num_classes = dataset.num_classes
 
         # evaluator
@@ -66,7 +68,8 @@ def build_dataset(d_cfg, args, is_train=False):
             gt_folder=d_cfg['gt_folder'],
             save_path='./evaluator/eval_results/',
             transform=basetransform,
-            collate_fn=CollateFunc()            
+            collate_fn=CollateFunc(),
+            img_processing=d_cfg['img_processing']
         )
 
     elif args.dataset == 'ava_v2.2':
@@ -92,7 +95,7 @@ def build_dataset(d_cfg, args, is_train=False):
             collate_fn=CollateFunc(),
             full_test_on_val=False,
             version='v2.2'
-            )
+        )
 
     else:
         print('unknown dataset !! Only support ucf24 & jhmdb21 & ava_v2.2 !!')
@@ -117,36 +120,36 @@ def build_dataloader(args, dataset, batch_size, collate_fn=None, is_train=False)
         else:
             sampler = torch.utils.data.RandomSampler(dataset)
 
-        batch_sampler_train = torch.utils.data.BatchSampler(sampler, 
-                                                            batch_size, 
+        batch_sampler_train = torch.utils.data.BatchSampler(sampler,
+                                                            batch_size,
                                                             drop_last=True)
         # train dataloader
         dataloader = torch.utils.data.DataLoader(
-            dataset=dataset, 
+            dataset=dataset,
             batch_sampler=batch_sampler_train,
-            collate_fn=collate_fn, 
+            collate_fn=collate_fn,
             num_workers=args.num_workers,
             pin_memory=True
-            )
+        )
     else:
         # test dataloader
         dataloader = torch.utils.data.DataLoader(
-            dataset=dataset, 
+            dataset=dataset,
             shuffle=False,
-            collate_fn=collate_fn, 
+            collate_fn=collate_fn,
             num_workers=args.num_workers,
             drop_last=False,
             pin_memory=True
-            )
-    
+        )
+
     return dataloader
-    
+
 
 def load_weight(model, path_to_ckpt=None):
     if path_to_ckpt is None:
         print('No trained weight ..')
         return model
-        
+
     checkpoint = torch.load(path_to_ckpt, map_location='cpu')
     # checkpoint state dict
     checkpoint_state_dict = checkpoint.pop("model")
@@ -179,24 +182,29 @@ class CollateFunc(object):
         batch_frame_id = []
         batch_key_target = []
         batch_video_clips = []
+        batch_inferred_tiles = []
 
         for sample in batch:
             key_frame_id = sample[0]
             video_clip = sample[1]
-            key_target = sample[2]
-            
+            inferred_tile = sample[2]
+            key_target = sample[3]
+
             batch_frame_id.append(key_frame_id)
             batch_video_clips.append(video_clip)
+            batch_inferred_tiles.append(inferred_tile)
             batch_key_target.append(key_target)
 
         # List [B, 3, T, H, W] -> [B, 3, T, H, W]
         batch_video_clips = torch.stack(batch_video_clips)
-        
-        return batch_frame_id, batch_video_clips, batch_key_target
+        batch_inferred_tiles = torch.stack(batch_inferred_tiles)
+
+        return batch_frame_id, batch_video_clips, batch_inferred_tiles, batch_key_target
 
 
 class AVA_FocalLoss(object):
     """ Focal loss for AVA"""
+
     def __init__(self, device, gamma, num_classes, reduction='none'):
         with open('config/ava_categories_ratio.json', 'r') as fb:
             self.class_ratio = json.load(fb)
@@ -207,11 +215,9 @@ class AVA_FocalLoss(object):
         self.class_weight = torch.zeros(80).to(device)
         self._init_class_weight()
 
-
     def _init_class_weight(self):
         for i in range(1, 81):
             self.class_weight[i - 1] = 1 - self.class_ratio[str(i)]
-
 
     def __call__(self, logits, targets):
         '''
@@ -248,6 +254,7 @@ class AVA_FocalLoss(object):
 
 class Softmax_FocalLoss(nn.Module):
     """ Focal loss for UCF24 & JHMDB21"""
+
     def __init__(self, num_classes, alpha=None, gamma=2.0, reduction='none'):
         super(Softmax_FocalLoss, self).__init__()
         if alpha is None:
@@ -260,7 +267,6 @@ class Softmax_FocalLoss(nn.Module):
         self.gamma = gamma
         self.num_classes = num_classes
         self.reduction = reduction
-
 
     def forward(self, inputs, targets):
         """
@@ -275,16 +281,16 @@ class Softmax_FocalLoss(nn.Module):
         class_mask = Variable(class_mask)
         ids = targets.view(-1, 1)
         class_mask.scatter_(1, ids, 1.)
-        
+
         self.alpha = self.alpha.to(inputs.device)
         alpha = self.alpha[ids.data.view(-1)]
-        
-        probs = (P*class_mask).sum(1).view(-1,1)
+
+        probs = (P * class_mask).sum(1).view(-1, 1)
 
         log_p = probs.log()
 
-        loss = -alpha * (torch.pow((1 - probs), self.gamma)) * log_p 
-        
+        loss = -alpha * (torch.pow((1 - probs), self.gamma)) * log_p
+
         if self.reduction == 'mean':
             loss = loss.mean()
 

@@ -3,16 +3,16 @@ import torch
 
 
 class YoloMatcher(object):
-    def __init__(self, num_classes, num_anchors, anchor_size, iou_thresh, multi_hot=False):
+    def __init__(self, num_classes, num_anchors, anchor_size, iou_thresh, multi_hot=False, inferred_tiling=False):
         self.num_classes = num_classes
         self.num_anchors = num_anchors
         self.iou_thresh = iou_thresh
         self.multi_hot = multi_hot
+        self.inferred_tiling = inferred_tiling
         self.anchor_boxes = np.array(
             [[0., 0., anchor[0], anchor[1]]
-            for anchor in anchor_size]
-            )  # [KA, 4]
-
+             for anchor in anchor_size]
+        )  # [KA, 4]
 
     def compute_iou(self, anchor_boxes, gt_box):
         """
@@ -24,7 +24,7 @@ class YoloMatcher(object):
         anchors[..., :2] = anchor_boxes[..., :2] - anchor_boxes[..., 2:] * 0.5  # x1y1
         anchors[..., 2:] = anchor_boxes[..., :2] + anchor_boxes[..., 2:] * 0.5  # x2y2
         anchors_area = anchor_boxes[..., 2] * anchor_boxes[..., 3]
-        
+
         # gt_box: [1, 4] -> [KA, 4]
         gt_box = np.array(gt_box).reshape(-1, 4)
         gt_box = np.repeat(gt_box, anchors.shape[0], axis=0)
@@ -39,32 +39,36 @@ class YoloMatcher(object):
         inter_h = np.minimum(anchors[:, 3], gt_box_[:, 3]) - \
                   np.maximum(anchors[:, 1], gt_box_[:, 1])
         inter_area = inter_w * inter_h
-        
+
         # union
         union_area = anchors_area + gt_box_area - inter_area
 
         # iou
         iou = inter_area / union_area
         iou = np.clip(iou, a_min=1e-10, a_max=1.0)
-        
-        return iou
 
+        return iou
 
     @torch.no_grad()
     def __call__(self, img_size, stride, targets):
         """
             img_size: (Int) image size
             stride: (Int) -> output stride of network.
-            targets: (Dict) dict{'boxes': [...], 
-                                 'labels': [...], 
+            targets: (Dict) dict{'boxes': [...],
+                                 'boxes_it': [...],
+                                 'labels': [...],
                                  'orig_size': ...}
         """
-        
+
         bs = len(targets)
         fmp_h = fmp_w = img_size // stride
         # prepare
         gt_conf = torch.zeros([bs, fmp_h, fmp_w, self.num_anchors, 1])
         gt_bboxes = torch.zeros([bs, fmp_h, fmp_w, self.num_anchors, 4])
+        if self.inferred_tiling:
+            gt_bboxes_it = torch.zeros([bs, fmp_h, fmp_w, self.num_anchors, 4])
+        else:
+            gt_bboxes_it = None
         if self.multi_hot:
             gt_cls = torch.zeros([bs, fmp_h, fmp_w, self.num_anchors, self.num_classes])
         else:
@@ -76,8 +80,11 @@ class YoloMatcher(object):
             tgt_labels = targets_per_image["labels"].numpy()
             # [N, 4]
             tgt_bboxes = targets_per_image['boxes'].numpy()
+            if self.inferred_tiling:
+                # [N, 4]
+                tgt_bboxes_it = targets_per_image['boxes_it'].numpy()
 
-            for box, label in zip(tgt_bboxes, tgt_labels):
+            for box_idx, (box, label) in enumerate(zip(tgt_bboxes, tgt_labels)):
                 # get a bbox coords
                 x1, y1, x2, y2 = box.tolist()
                 # rescale bbox
@@ -85,6 +92,14 @@ class YoloMatcher(object):
                 y1 *= img_size
                 x2 *= img_size
                 y2 *= img_size
+                if self.inferred_tiling:
+                    # get a bbox coords
+                    x1_it, y1_it, x2_it, y2_it = tgt_bboxes_it[box_idx].tolist()
+                    # rescale bbox
+                    x1_it *= img_size
+                    y1_it *= img_size
+                    x2_it *= img_size
+                    y2_it *= img_size
                 # xyxy -> cxcywh
                 xc, yc = (x2 + x1) * 0.5, (y2 + y1) * 0.5
                 bw, bh = x2 - x1, y2 - y1
@@ -111,7 +126,7 @@ class YoloMatcher(object):
                     grid_y = int(yc_s)
 
                     label_assignment_results.append([grid_x, grid_y, anchor_idx])
-                else:            
+                else:
                     for iou_ind, iou_m in enumerate(iou_mask):
                         if iou_m:
                             anchor_idx = iou_ind
@@ -133,6 +148,8 @@ class YoloMatcher(object):
                     if is_valid:
                         gt_conf[bi, grid_y, grid_x, anchor_idx, 0] = 1.0
                         gt_bboxes[bi, grid_y, grid_x, anchor_idx] = torch.as_tensor([x1, y1, x2, y2])
+                        if self.inferred_tiling:
+                            gt_bboxes_it[bi, grid_y, grid_x, anchor_idx] = torch.as_tensor([x1_it, y1_it, x2_it, y2_it])
                         if self.multi_hot:
                             gt_cls[bi, grid_y, grid_x, anchor_idx, :] = torch.as_tensor(label)
                         else:
@@ -141,13 +158,14 @@ class YoloMatcher(object):
         # [B, M, C]
         gt_conf = gt_conf.view(bs, -1, 1).float()
         gt_bboxes = gt_bboxes.view(bs, -1, 4).float()
+        if self.inferred_tiling:
+            gt_bboxes_it = gt_bboxes_it.view(bs, -1, 4).float()
         if self.multi_hot:
             gt_cls = gt_cls.view(bs, -1, self.num_classes).long()
         else:
             gt_cls = gt_cls.view(bs, -1, 1).long()
 
-        return gt_conf, gt_cls, gt_bboxes
-
+        return gt_conf, gt_cls, gt_bboxes, gt_bboxes_it
 
 
 if __name__ == "__main__":

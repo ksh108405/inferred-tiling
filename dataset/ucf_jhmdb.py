@@ -11,6 +11,7 @@ import torch
 from torch.utils.data import Dataset
 from PIL import Image
 import pyvips
+from utils.frame_matcher import frame_match_bboxes
 
 
 # Dataset for UCF24 & JHMDB
@@ -23,7 +24,8 @@ class UCF_JHMDB_Dataset(Dataset):
                  is_train=False,
                  len_clip=16,
                  sampling_rate=1,
-                 img_processing='PIL'):
+                 img_processing='PIL',
+                 inferred_tiling=False):
         self.data_root = data_root
         self.dataset = dataset
         self.transform = transform
@@ -33,6 +35,9 @@ class UCF_JHMDB_Dataset(Dataset):
         self.len_clip = len_clip
         self.sampling_rate = sampling_rate
         self.img_processing = img_processing
+        self.inferred_tiling = inferred_tiling
+        if self.inferred_tiling and self.img_processing == 'pyvips':
+            raise Exception('Not implemented yet!')
 
         if self.is_train:
             self.split_list = 'trainlist.txt'
@@ -40,8 +45,20 @@ class UCF_JHMDB_Dataset(Dataset):
             self.split_list = 'testlist.txt'
 
         # load data
-        with open(os.path.join(data_root, self.split_list), 'r') as file:
-            self.file_names = file.readlines()
+        if self.inferred_tiling and self.is_train:
+            self.file_names = []
+            with open(os.path.join(data_root, self.split_list), 'r') as file:
+                lines = file.readlines()
+                for idx in range(len(lines) - 1):
+                    video_name = lines[idx].split('/')[-2]
+                    next_video_name = lines[idx + 1].split('/')[-2]
+                    frame_id = int(lines[idx].split('/')[-1][:5])
+                    next_frame_id = int(lines[idx + 1].split('/')[-1][:5])
+                    if video_name == next_video_name and next_frame_id - frame_id == 1:
+                        self.file_names.append(lines[idx])
+        else:
+            with open(os.path.join(data_root, self.split_list), 'r') as file:
+                self.file_names = file.readlines()
         self.num_samples = len(self.file_names)
 
         if dataset == 'ucf24':
@@ -56,9 +73,9 @@ class UCF_JHMDB_Dataset(Dataset):
 
     def __getitem__(self, index):
         # load a data
-        frame_idx, video_clip, target = self.pull_item(index)
+        frame_idx, video_clip, inferred_tiles, target = self.pull_item(index)
 
-        return frame_idx, video_clip, target
+        return frame_idx, video_clip, inferred_tiles, target
 
     def pull_item(self, index):
         """ load a data """
@@ -71,6 +88,10 @@ class UCF_JHMDB_Dataset(Dataset):
 
         # path to label
         label_path = os.path.join(self.data_root, img_split[0], img_split[1], img_split[2], '{:05d}.txt'.format(img_id))
+        if self.inferred_tiling and self.is_train:
+            label_nf_path = os.path.join(self.data_root, img_split[0], img_split[1], img_split[2], '{:05d}.txt'.format(img_id + 1))
+        else:
+            label_nf_path = None
 
         # image folder
         img_folder = os.path.join(self.data_root, 'rgb-images', img_split[1], img_split[2])
@@ -84,7 +105,7 @@ class UCF_JHMDB_Dataset(Dataset):
             max_num = len(os.listdir(img_folder))
 
         # sampling rate
-        if self.is_train:
+        if self.is_train and not self.inferred_tiling:
             d = random.randint(1, 2)
         else:
             d = self.sampling_rate
@@ -126,24 +147,74 @@ class UCF_JHMDB_Dataset(Dataset):
         else:
             target = None
 
+        # load next frame annotation
+        target_nf = None
+        if label_nf_path is not None:
+            if os.path.getsize(label_nf_path):
+                target_nf = np.loadtxt(label_nf_path)
+
         # [label, x1, y1, x2, y2] -> [x1, y1, x2, y2, label]
         label = target[..., :1]
         boxes = target[..., 1:]
         target = np.concatenate([boxes, label], axis=-1).reshape(-1, 5)
+        if target_nf is not None:
+            label_nf = target_nf[..., :1]
+            boxes_nf = target_nf[..., 1:]
+            target_nf = np.concatenate([label_nf, boxes_nf], axis=-1).reshape(-1, 5)
+
+            nf_bbox_order_list = \
+                frame_match_bboxes(target[..., :4], target[..., 4:], target_nf[..., 1:], target_nf[..., :1])
+
+            label_nf = target_nf[..., :1]
+            boxes_nf = target_nf[..., 1:]
+            boxes_nf_ = []
+            for box_nf in boxes_nf:
+                x1 = box_nf[0]
+                y1 = box_nf[1]
+                x2 = box_nf[2]
+                y2 = box_nf[3]
+                w = x2 - x1
+                h = y2 - y1
+                x1 = (x1 - w * 0.1)
+                y1 = (y1 - h * 0.1)
+                x2 = (x2 + w * 0.1)
+                y2 = (y2 + h * 0.1)
+                boxes_nf_.append([x1, y1, x2, y2])
+            boxes_nf = np.array(boxes_nf_)
+            target_nf = np.concatenate([label_nf, boxes_nf], axis=-1).reshape(-1, 5)
+
+            label_nf = target_nf[..., :1]
+            boxes_nf = target_nf[..., 1:]
+            boxes_nf_ = []
+            label_nf_ = []
+            for idx in range(label.size):
+                if idx in nf_bbox_order_list:
+                    boxes_nf_.append(boxes_nf[np.where(nf_bbox_order_list == idx)[0]])
+                    label_nf_.append(label_nf[np.where(nf_bbox_order_list == idx)[0]])
+                else:
+                    boxes_nf_.append(np.zeros((1, 4)))
+                    label_nf_.append(np.ones((1, 1)) * -1)
+            boxes_nf = np.concatenate(boxes_nf_, axis=0)
+            label_nf = np.concatenate(label_nf_, axis=0)
+            target_nf = np.concatenate([boxes_nf, label_nf], axis=-1).reshape(-1, 5)
+            assert target_nf.shape == target.shape, \
+                f"Frame matching error.\nprev_frame: {target}\ncur_frame: {target_nf}"
 
         # transform
-        video_clip, target = self.transform(video_clip, target)
+        video_clip, inferred_tiles, target, target_nf = self.transform(video_clip, target, target_nf)
         # List [T, 3, H, W] -> [3, T, H, W]
         video_clip = torch.stack(video_clip, dim=1)
+        inferred_tiles = torch.stack(inferred_tiles, dim=0)
 
         # reformat target
         target = {
             'boxes': target[:, :4].float(),  # [N, 4]
+            'boxes_it': target_nf[:, :4].float(),  # [N, 4]
             'labels': target[:, -1].long() - 1,  # [N,]
             'orig_size': [ow, oh]
         }
 
-        return frame_id, video_clip, target
+        return frame_id, video_clip, inferred_tiles, target
 
     def pull_anno(self, index):
         """ load a data """
@@ -199,7 +270,7 @@ class UCF_JHMDB_VIDEO_Dataset(Dataset):
         elif self.dataset == 'jhmdb21':
             self.label_paths = sorted(glob.glob(os.path.join(self.img_folder, '*.png')))
         elif self.dataset == 'aihub_park':
-            self.label_paths = sorted(glob.glob(os.path.join(self.img_folder, '*.png')))
+            self.label_paths = sorted(glob.glob(os.path.join(self.img_folder, '*.jpg')))
 
     def __len__(self):
         return len(self.label_paths)

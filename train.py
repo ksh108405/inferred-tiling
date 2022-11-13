@@ -70,6 +70,10 @@ def parse_args():
     parser.add_argument('--num_workers', default=4, type=int,
                         help='Number of workers used in dataloading')
 
+    # Inferred Tiling
+    parser.add_argument('-it', '--inferred_tiling', action='store_true', default=False,
+                        help='use inferred tiling technic')
+
     # DDP train
     parser.add_argument('-dist', '--distributed', action='store_true', default=False,
                         help='distributed training')
@@ -126,10 +130,13 @@ def train():
     m_cfg = build_model_config(args)
 
     # dataset and evaluator
-    dataset, evaluator, num_classes = build_dataset(d_cfg, args, is_train=True)
+    dataset, evaluator, num_classes = build_dataset(d_cfg, args, is_train=True, inferred_tiling=args.inferred_tiling)
 
     # dataloader
-    batch_size = d_cfg['batch_size'] * distributed_utils.get_world_size()
+    if args.inferred_tiling:
+        batch_size = 1 * distributed_utils.get_world_size()
+    else:
+        batch_size = d_cfg['batch_size'] * distributed_utils.get_world_size()
     dataloader = build_dataloader(args, dataset, batch_size, CollateFunc(), is_train=True)
 
     # build model
@@ -139,7 +146,8 @@ def train():
                       device=device,
                       num_classes=num_classes,
                       trainable=True,
-                      resume=args.resume)
+                      resume=args.resume,
+                      inferred_tiling=args.inferred_tiling)
     model = net
     model = model.to(device).train()
 
@@ -161,11 +169,15 @@ def train():
             model=model_copy,
             img_size=d_cfg['test_size'],
             len_clip=d_cfg['len_clip'],
-            device=device)
+            device=device,
+            inferred_tiling=args.inferred_tiling)
         del model_copy
 
     # optimizer
-    base_lr = d_cfg['base_lr']
+    if args.inferred_tiling:
+        base_lr = d_cfg['base_lr'] / d_cfg['batch_size']
+    else:
+        base_lr = d_cfg['base_lr']
     optimizer, start_epoch = build_optimizer(
         model=model_without_ddp,
         base_lr=base_lr,
@@ -183,12 +195,20 @@ def train():
     )
 
     # warmup scheduler
-    warmup_scheduler = build_warmup(
-        name=d_cfg['warmup'],
-        base_lr=base_lr,
-        wp_iter=d_cfg['wp_iter'],
-        warmup_factor=d_cfg['warmup_factor']
-    )
+    if args.inferred_tiling:
+        warmup_scheduler = build_warmup(
+            name=d_cfg['warmup'],
+            base_lr=base_lr,
+            wp_iter=d_cfg['wp_iter'] * d_cfg['batch_size'],
+            warmup_factor=d_cfg['warmup_factor']
+        )
+    else:
+        warmup_scheduler = build_warmup(
+            name=d_cfg['warmup'],
+            base_lr=base_lr,
+            wp_iter=d_cfg['wp_iter'],
+            warmup_factor=d_cfg['warmup_factor']
+        )
 
     # training configuration
     max_epoch = d_cfg['max_epoch']
@@ -201,7 +221,7 @@ def train():
             dataloader.batch_sampler.sampler.set_epoch(epoch)
 
             # train one epoch
-        for iter_i, (frame_ids, video_clips, targets) in enumerate(dataloader):
+        for iter_i, (frame_ids, video_clips, inferred_tiles, targets) in enumerate(dataloader):
             ni = iter_i + epoch * epoch_size
 
             # warmup
@@ -216,13 +236,14 @@ def train():
 
             # to device
             video_clips = video_clips.to(device)
+            inferred_tiles = inferred_tiles.to(device)
 
             # inference
             if args.fp16:
                 with torch.cuda.amp.autocast(enabled=args.fp16):
-                    loss_dict = model(video_clips, targets=targets)
+                    loss_dict, _ = model(video_clips, inferred_tiles, targets=targets)
             else:
-                loss_dict = model(video_clips, targets=targets)
+                loss_dict, _ = model(video_clips, inferred_tiles, targets=targets)
 
             losses = loss_dict['losses']
             losses = losses / d_cfg['accumulate']
@@ -232,7 +253,7 @@ def train():
 
             # check loss
             if torch.isnan(losses):
-                print('loss is NAN !!')
+                print('loss is NAN!!')
                 continue
 
             # Backward and Optimize
@@ -261,7 +282,7 @@ def train():
                 # basic infor
                 log = '[Epoch: {}/{}]'.format(epoch + 1, max_epoch)
                 log += '[Iter: {}/{}]'.format(iter_i, epoch_size)
-                log += '[lr: {:.6f}]'.format(cur_lr[0])
+                log += '[lr: {:.8f}]'.format(cur_lr[0])
                 # loss infor
                 for k in loss_dict_reduced.keys():
                     log += '[{}: {:.2f}]'.format(k, loss_dict[k])

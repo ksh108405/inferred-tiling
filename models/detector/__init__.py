@@ -5,12 +5,13 @@ from .yowo.yowo import YOWO
 # build YOWO detector
 def build_model(args,
                 d_cfg,
-                m_cfg, 
-                device, 
-                num_classes=80, 
+                m_cfg,
+                device,
+                num_classes=80,
                 trainable=False,
                 eval_mode=False,
-                resume=None):
+                resume=None,
+                inferred_tiling=False):
     print('==============================')
     print('Build {} ...'.format(args.version.upper()))
 
@@ -40,9 +41,9 @@ def build_model(args,
         nms_thresh=nms_thresh,
         topk=args.topk,
         trainable=trainable,
-        multi_hot=d_cfg['multi_hot']
-        )
-
+        multi_hot=d_cfg['multi_hot'],
+        inferred_tiling=inferred_tiling
+    )
 
     # Freeze backbone
     if d_cfg['freeze_backbone_2d']:
@@ -53,13 +54,13 @@ def build_model(args,
         print('Freeze 3D Backbone ...')
         for m in model.backbone_3d.parameters():
             m.requires_grad = False
-            
-    # keep training       
+
+    # keep training
     if resume is not None:
         print('keep training: ', resume)
         checkpoint = torch.load(resume, map_location='cpu')
         # checkpoint state dict
         checkpoint_state_dict = checkpoint.pop("model")
         model.load_state_dict(checkpoint_state_dict)
-                        
+
     return model

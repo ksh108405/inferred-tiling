@@ -7,7 +7,8 @@ from PIL import Image
 
 # Augmentation for Training
 class Augmentation(object):
-    def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], jitter=0.2, hue=0.1, saturation=1.5, exposure=1.5, img_processing='PIL'):
+    def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], jitter=0.2, hue=0.1,
+                 saturation=1.5, exposure=1.5, img_processing='PIL', inferred_tiling=False, it_jitter=0.1):
         self.img_size = img_size
         self.pixel_mean = pixel_mean
         self.pixel_std = pixel_std
@@ -16,29 +17,29 @@ class Augmentation(object):
         self.saturation = saturation
         self.exposure = exposure
         self.img_processing = img_processing
-
+        self.inferred_tiling = inferred_tiling
+        self.it_jitter = it_jitter
 
     def rand_scale(self, s):
         scale = random.uniform(1, s)
 
-        if random.randint(0, 1): 
+        if random.randint(0, 1):
             return scale
 
-        return 1./scale
+        return 1. / scale
 
-
-    def random_distort_image(self, video_clip):
+    def random_distort_image(self, video_clip, inferred_tiles):
         dhue = random.uniform(-self.hue, self.hue)
         dsat = self.rand_scale(self.saturation)
         dexp = self.rand_scale(self.exposure)
-        
+
         video_clip_ = []
         for image in video_clip:
             image = image.convert('HSV')
             cs = list(image.split())
             cs[1] = cs[1].point(lambda i: i * dsat)
             cs[2] = cs[2].point(lambda i: i * dexp)
-            
+
             def change_hue(x):
                 x += dhue * 255
                 if x > 255:
@@ -54,8 +55,32 @@ class Augmentation(object):
 
             video_clip_.append(image)
 
-        return video_clip_
+        if self.inferred_tiling:
+            inferred_tiles_ = []
+            for tile in inferred_tiles:
+                tile = tile.convert('HSV')
+                cs = list(tile.split())
+                cs[1] = cs[1].point(lambda i: i * dsat)
+                cs[2] = cs[2].point(lambda i: i * dexp)
 
+                def change_hue(x):
+                    x += dhue * 255
+                    if x > 255:
+                        x -= 255
+                    if x < 0:
+                        x += 255
+                    return x
+
+                cs[0] = cs[0].point(change_hue)
+                tile = Image.merge(tile.mode, tuple(cs))
+
+                tile = tile.convert('RGB')
+
+                inferred_tiles_.append(tile)
+        else:
+            inferred_tiles_ = None
+
+        return video_clip_, inferred_tiles_
 
     def random_crop(self, target, video_clip, width, height):
         dw = int(width * self.jitter)
@@ -78,14 +103,14 @@ class Augmentation(object):
             ptop = random.randint(0, int(np.minimum(dh, bbox_min_top)))
             pbot = random.randint(0, int(np.minimum(dh, height - bbox_max_bottom)))
 
-        swidth =  width - pleft - pright
+        swidth = width - pleft - pright
         sheight = height - ptop - pbot
 
-        sx = float(swidth)  / width
+        sx = float(swidth) / width
         sy = float(sheight) / height
-        
-        dx = (float(pleft) / width)/sx
-        dy = (float(ptop) / height)/sy
+
+        dx = (float(pleft) / width) / sx
+        dy = (float(ptop) / height) / sy
 
         # random crop
         if self.img_processing == 'PIL':
@@ -93,16 +118,36 @@ class Augmentation(object):
         elif self.img_processing == 'pyvips':
             cropped_clip = [img.crop(pleft, ptop, swidth, sheight) for img in video_clip]
 
-        return cropped_clip, dx, dy, sx, sy
+        if self.inferred_tiling:
+            cropped_tiles = []
+            for box in target:
+                x1, y1, x2, y2 = box[:4]
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                w = x2 - x1
+                h = y2 - y1
+                dw = int(w * self.it_jitter)
+                dh = int(h * self.it_jitter)
+                tl = int(x1 * (1. - self.it_jitter))
+                tr = int(x2 * (1. + self.it_jitter))
+                tt = int(y1 * (1. - self.it_jitter))
+                tb = int(y2 * (1. + self.it_jitter))
+                t_left  = random.randint(-dw + tl, dw + tl)
+                t_right = random.randint(-dw + tr, dw + tr)
+                t_top   = random.randint(-dh + tt, dh + tt)
+                t_bot   = random.randint(-dh + tb, dh + tb)
+                cropped_tiles.append(video_clip[-1].crop((t_left, t_top, t_right, t_bot)))
+        else:
+            cropped_tiles = None
 
+        return cropped_clip, cropped_tiles, dx, dy, sx, sy
 
-    def apply_bbox(self, target, ow, oh, dx, dy, sx, sy):
-        sx, sy = 1./sx, 1./sy
+    def apply_bbox(self, target, ow, oh, dx, dy, sx, sy, inferred_tile=False):
+        sx, sy = 1. / sx, 1. / sy
         # apply deltas on bbox
-        target[..., 0] = np.minimum(0.999, np.maximum(0, target[..., 0] / ow * sx - dx)) 
-        target[..., 1] = np.minimum(0.999, np.maximum(0, target[..., 1] / oh * sy - dy)) 
-        target[..., 2] = np.minimum(0.999, np.maximum(0, target[..., 2] / ow * sx - dx)) 
-        target[..., 3] = np.minimum(0.999, np.maximum(0, target[..., 3] / oh * sy - dy)) 
+        target[..., 0] = np.minimum(0.999, np.maximum(0, target[..., 0] / ow * sx - dx))
+        target[..., 1] = np.minimum(0.999, np.maximum(0, target[..., 1] / oh * sy - dy))
+        target[..., 2] = np.minimum(0.999, np.maximum(0, target[..., 2] / ow * sx - dx))
+        target[..., 3] = np.minimum(0.999, np.maximum(0, target[..., 3] / oh * sy - dy))
 
         # refine target
         refine_target = []
@@ -111,27 +156,29 @@ class Augmentation(object):
             bw = (tgt[2] - tgt[0]) * ow
             bh = (tgt[3] - tgt[1]) * oh
 
-            if bw < 1. or bh < 1.:
-                continue
-            
+            if not inferred_tile:
+                if bw < 1. or bh < 1.:
+                    continue
+
             refine_target.append(tgt)
 
         refine_target = np.array(refine_target).reshape(-1, target.shape[-1])
 
         return refine_target
-        
 
     def to_tensor(self, video_clip):
         return [F.normalize(F.to_tensor(image), self.pixel_mean, self.pixel_std) for image in video_clip]
 
-
-    def __call__(self, video_clip, target):
+    def __call__(self, video_clip, target, target_nf=None):
         # Initialize Random Variables
-        oh = video_clip[0].height  
+        oh = video_clip[0].height
         ow = video_clip[0].width
-        
+
         # random crop
-        video_clip, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
+        if self.inferred_tiling:
+            video_clip, inferred_tiles, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
+        else:
+            video_clip, _, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
 
         # resize
         if self.img_processing == 'PIL':
@@ -139,31 +186,50 @@ class Augmentation(object):
         elif self.img_processing == 'pyvips':
             video_clip = [img.thumbnail_image(self.img_size, height=self.img_size, size='force') for img in video_clip]
             video_clip = [Image.fromarray(image.numpy()).convert('RGB') for image in video_clip]
+        if self.inferred_tiling:
+            inferred_tiles = [tile.resize([self.img_size, self.img_size]) for tile in inferred_tiles]
 
         # random flip
         flip = random.randint(0, 1)
         if flip:
             video_clip = [img.transpose(Image.FLIP_LEFT_RIGHT) for img in video_clip]
+            if self.inferred_tiling:
+                inferred_tiles = [tile.transpose(Image.FLIP_LEFT_RIGHT) for tile in inferred_tiles]
 
         # distort
-        video_clip = self.random_distort_image(video_clip)
+        if self.inferred_tiling:
+            video_clip, inferred_tiles = self.random_distort_image(video_clip, inferred_tiles)
+        else:
+            video_clip, _ = self.random_distort_image(video_clip, None)
 
         # process target
         if target is not None:
             target = self.apply_bbox(target, ow, oh, dx, dy, sx, sy)
             if flip:
                 target[..., [0, 2]] = 1.0 - target[..., [2, 0]]
+            if target_nf is not None:
+                target_nf = self.apply_bbox(target_nf, ow, oh, dx, dy, sx, sy, True)
+                if flip:
+                    target_nf[..., [0, 2]] = 1.0 - target_nf[..., [2, 0]]
+            else:
+                target_nf = np.array([])
         else:
             target = np.array([])
-            
+
         # to tensor
         video_clip = self.to_tensor(video_clip)
+        if self.inferred_tiling:
+            inferred_tiles = self.to_tensor(inferred_tiles)
+        else:
+            inferred_tiles = None
         target = torch.as_tensor(target).float()
+        target_nf = torch.as_tensor(target_nf).float()
 
-        return video_clip, target 
+        return video_clip, inferred_tiles, target, target_nf
+
+    # Transform for Testing
 
 
-# Transform for Testing
 class BaseTransform(object):
     def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], img_processing='PIL'):
         self.img_size = img_size
@@ -173,7 +239,6 @@ class BaseTransform(object):
 
     def to_tensor(self, video_clip):
         return [F.normalize(F.to_tensor(image), self.pixel_mean, self.pixel_std) for image in video_clip]
-
 
     def __call__(self, video_clip, target=None, normalize=True):
         oh = video_clip[0].height
@@ -199,5 +264,4 @@ class BaseTransform(object):
         video_clip = self.to_tensor(video_clip)
         target = torch.as_tensor(target).float()
 
-        return video_clip, target 
-
+        return video_clip, target
