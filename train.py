@@ -196,19 +196,16 @@ def train():
 
     # warmup scheduler
     if args.inferred_tiling:
-        warmup_scheduler = build_warmup(
-            name=d_cfg['warmup'],
-            base_lr=base_lr,
-            wp_iter=d_cfg['wp_iter'] * d_cfg['batch_size'],
-            warmup_factor=d_cfg['warmup_factor']
-        )
+        wp_iter = d_cfg['wp_iter'] * d_cfg['batch_size']
     else:
-        warmup_scheduler = build_warmup(
-            name=d_cfg['warmup'],
-            base_lr=base_lr,
-            wp_iter=d_cfg['wp_iter'],
-            warmup_factor=d_cfg['warmup_factor']
-        )
+        wp_iter = d_cfg['wp_iter']
+
+    warmup_scheduler = build_warmup(
+        name=d_cfg['warmup'],
+        base_lr=base_lr,
+        wp_iter=wp_iter,
+        warmup_factor=d_cfg['warmup_factor']
+    )
 
     # training configuration
     max_epoch = d_cfg['max_epoch']
@@ -225,10 +222,10 @@ def train():
             ni = iter_i + epoch * epoch_size
 
             # warmup
-            if ni < d_cfg['wp_iter'] and warmup:
+            if ni < wp_iter and warmup:
                 warmup_scheduler.warmup(ni, optimizer)
 
-            elif ni == d_cfg['wp_iter'] and warmup:
+            elif ni == wp_iter and warmup:
                 # warmup is over
                 print('Warmup is over')
                 warmup = False
