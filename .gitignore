@@ -8,3 +8,5 @@ det_results
 /dataset/demo/ucf24_demo/
 /img_files/
 /.idea/
+/evaluator/eval_results/
+/results/
