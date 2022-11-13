@@ -71,12 +71,15 @@ def plot_bbox_labels(img, bbox, label=None, cls_color=None, text_scale=0.4):
 def vis_detection(frame, scores, labels, bboxes, vis_thresh, class_names, class_colors):
     ts = 0.4
     for i, bbox in enumerate(bboxes):
-        if scores[i] > vis_thresh:
+        if scores is None or scores[i] > vis_thresh:
             label = int(labels[i])
             cls_color = class_colors[label]
-                
+
             if len(class_names) > 1:
-                mess = '%s: %.2f' % (class_names[label], scores[i])
+                if scores is None:
+                    mess = '%s' % (class_names[label])
+                else:
+                    mess = '%s: %.2f' % (class_names[label], scores[i])
             else:
                 cls_color = [255, 0, 0]
                 mess = None
