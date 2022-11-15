@@ -5,6 +5,7 @@ from scipy.io import loadmat
 from PIL import Image
 from math import floor, ceil
 import torchvision.transforms.functional as F
+import cv2
 
 from dataset.ucf_jhmdb import UCF_JHMDB_Dataset, UCF_JHMDB_VIDEO_Dataset
 from utils.box_ops import rescale_bboxes
@@ -180,6 +181,30 @@ class UCF_JHMDB_Evaluator(object):
                             os.mkdir('results/park_detections/'+self.model_name)
                         if not os.path.exists(current_dir):
                             os.mkdir(current_dir)
+
+                    """
+                    img_split = batch_frame_id[0].split('_')
+                    key_frame_dir_name = ''
+                    for i in range(1, len(img_split) - 1):
+                        key_frame_dir_name += img_split[i]
+                        if i != len(img_split) - 2:
+                            key_frame_dir_name += '_'
+                    key_frame_path = os.path.join(self.data_root, 'rgb-images', img_split[0],
+                                                  key_frame_dir_name, f'{img_split[-1][:5]}.jpg')
+                    key_frame = cv2.imread(key_frame_path, cv2.IMREAD_COLOR)
+
+                    for bbox, bbox_it in zip(bboxes, bboxes_it):
+                        x1, y1, x2, y2 = bbox
+                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                        key_frame = cv2.rectangle(key_frame, (x1, y1), (x2, y2), (196, 196, 255), 2)  # cur_frame
+                        x1, y1, x2, y2 = bbox_it
+                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                        key_frame = cv2.rectangle(key_frame, (x1, y1), (x2, y2), (96, 96, 255), 2)  # next_frame
+
+                    key_frame = cv2.resize(key_frame, (1280, 720))
+                    cv2.imshow('image', key_frame)
+                    cv2.waitKey(0)
+                    """
 
                     with open(detection_path, 'w+') as f_detect:
                         for score, label, bbox in zip(scores, labels, bboxes):
