@@ -2,13 +2,15 @@ import random
 import numpy as np
 import torch
 import torchvision.transforms.functional as F
+import cv2
 from PIL import Image
 
 
 # Augmentation for Training
 class Augmentation(object):
     def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], jitter=0.2, hue=0.1,
-                 saturation=1.5, exposure=1.5, img_processing='PIL', inferred_tiling=False, it_jitter=0.1):
+                 saturation=1.5, exposure=1.5, img_processing='PIL', inferred_tiling=False, it_jitter=0.1,
+                 it_drop=0.1, it_wrong=0.3, it_wrong_surplus=0.5):
         self.img_size = img_size
         self.pixel_mean = pixel_mean
         self.pixel_std = pixel_std
@@ -19,6 +21,9 @@ class Augmentation(object):
         self.img_processing = img_processing
         self.inferred_tiling = inferred_tiling
         self.it_jitter = it_jitter
+        self.it_drop = it_drop
+        self.it_wrong = it_wrong
+        self.it_wrong_surplus = it_wrong_surplus
 
     def rand_scale(self, s):
         scale = random.uniform(1, s)
@@ -82,6 +87,19 @@ class Augmentation(object):
 
         return video_clip_, inferred_tiles_
 
+
+    def random_tile_crop(self, img, height, width):
+        cx = np.random.randint(int(width * 0.05), int(width * 0.95))
+        cy = np.random.randint(int(height * 0.05), int(height * 0.95))
+        w = np.random.randint(int(width * 0.05), int(width * 0.2))
+        h = np.random.randint(int(height * 0.05), int(height * 0.2))
+        t_left = cx - (w // 2)
+        t_right = cx + (w // 2)
+        t_top = cy - (h // 2)
+        t_bot = cy + (h // 2)
+        return img.crop((t_left, t_top, t_right, t_bot))
+
+
     def random_crop(self, target, video_clip, width, height):
         dw = int(width * self.jitter)
         dh = int(height * self.jitter)
@@ -119,23 +137,46 @@ class Augmentation(object):
             cropped_clip = [img.crop(pleft, ptop, swidth, sheight) for img in video_clip]
 
         if self.inferred_tiling:
+            """
+            image = np.array(video_clip[-1])
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            """
             cropped_tiles = []
+            random_det = np.random.rand()
             for box in target:
-                x1, y1, x2, y2 = box[:4]
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                w = x2 - x1
-                h = y2 - y1
-                dw = int(w * self.it_jitter)
-                dh = int(h * self.it_jitter)
-                tl = int(x1 * (1. - self.it_jitter))
-                tr = int(x2 * (1. + self.it_jitter))
-                tt = int(y1 * (1. - self.it_jitter))
-                tb = int(y2 * (1. + self.it_jitter))
-                t_left  = random.randint(-dw + tl, dw + tl)
-                t_right = random.randint(-dw + tr, dw + tr)
-                t_top   = random.randint(-dh + tt, dh + tt)
-                t_bot   = random.randint(-dh + tb, dh + tb)
-                cropped_tiles.append(video_clip[-1].crop((t_left, t_top, t_right, t_bot)))
+                if random_det < self.it_drop:  # drop
+                    continue
+                elif random_det < self.it_drop + self.it_wrong:  # wrong crop
+                    cropped_tiles.append(self.random_tile_crop(video_clip[-1], height, width))
+                    random_det_surplus = np.random.rand()
+                    if random_det_surplus < 0.5:
+                        cropped_tiles.append(self.random_tile_crop(video_clip[-1], height, width))
+                else:  # normal crop
+                    x1, y1, x2, y2 = box[:4]
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                    w = x2 - x1
+                    h = y2 - y1
+                    dw = int(w * self.it_jitter)
+                    dh = int(h * self.it_jitter)
+                    tl = x1 - dw
+                    tr = x2 + dw
+                    tt = y1 - dh
+                    tb = y2 + dh
+                    t_left  = random.randint(-dw + tl, dw + tl)
+                    t_right = random.randint(-dw + tr, dw + tr)
+                    t_top   = random.randint(-dh + tt, dh + tt)
+                    t_bot   = random.randint(-dh + tb, dh + tb)
+                    cropped_tiles.append(video_clip[-1].crop((t_left, t_top, t_right, t_bot)))
+                    """
+                    image = cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    image = cv2.rectangle(image, (dw + tl, dh + tt), (tr - dw, tb - dh), (0, 0, 255), 2)  # min
+                    image = cv2.rectangle(image, (tl - dw, tt - dh), (dw + tr, dh + tb), (0, 0, 255), 2)  # max
+            image = cv2.resize(image, (1280, 720))
+            cv2.imshow('image', image)
+            cv2.waitKey(0)
+            """
+            if cropped_tiles == []:
+                cropped_tiles = None
         else:
             cropped_tiles = None
 
@@ -187,18 +228,21 @@ class Augmentation(object):
             video_clip = [img.thumbnail_image(self.img_size, height=self.img_size, size='force') for img in video_clip]
             video_clip = [Image.fromarray(image.numpy()).convert('RGB') for image in video_clip]
         if self.inferred_tiling:
-            inferred_tiles = [tile.resize([self.img_size, self.img_size]) for tile in inferred_tiles]
+            if inferred_tiles is not None:
+                inferred_tiles = [tile.resize([self.img_size, self.img_size]) for tile in inferred_tiles]
 
         # random flip
         flip = random.randint(0, 1)
         if flip:
             video_clip = [img.transpose(Image.FLIP_LEFT_RIGHT) for img in video_clip]
             if self.inferred_tiling:
-                inferred_tiles = [tile.transpose(Image.FLIP_LEFT_RIGHT) for tile in inferred_tiles]
+                if inferred_tiles is not None:
+                    inferred_tiles = [tile.transpose(Image.FLIP_LEFT_RIGHT) for tile in inferred_tiles]
 
         # distort
         if self.inferred_tiling:
-            video_clip, inferred_tiles = self.random_distort_image(video_clip, inferred_tiles)
+            if inferred_tiles is not None:
+                video_clip, inferred_tiles = self.random_distort_image(video_clip, inferred_tiles)
         else:
             video_clip, _ = self.random_distort_image(video_clip, None)
 
@@ -219,7 +263,8 @@ class Augmentation(object):
         # to tensor
         video_clip = self.to_tensor(video_clip)
         if self.inferred_tiling:
-            inferred_tiles = self.to_tensor(inferred_tiles)
+            if inferred_tiles is not None:
+                inferred_tiles = self.to_tensor(inferred_tiles)
         else:
             inferred_tiles = None
         target = torch.as_tensor(target).float()

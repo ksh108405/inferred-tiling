@@ -204,7 +204,7 @@ class UCF_JHMDB_Dataset(Dataset):
         video_clip, target, target_nf, inferred_tiles = self.transform(video_clip, target, target_nf=target_nf)
         # List [T, 3, H, W] -> [3, T, H, W]
         video_clip = torch.stack(video_clip, dim=1)
-        if self.inferred_tiling and self.is_train:
+        if self.inferred_tiling and self.is_train and inferred_tiles is not None:
             inferred_tiles = torch.stack(inferred_tiles, dim=0)
         else:
             inferred_tiles = None
