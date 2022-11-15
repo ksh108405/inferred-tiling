@@ -233,7 +233,10 @@ def train():
 
             # to device
             video_clips = video_clips.to(device)
-            inferred_tiles = inferred_tiles.to(device)
+            if inferred_tiles != [None]:
+                inferred_tiles = inferred_tiles.to(device)
+            else:
+                inferred_tiles = None
 
             # inference
             if args.fp16:
