@@ -37,7 +37,7 @@ class UCF_JHMDB_Dataset(Dataset):
         self.img_processing = img_processing
         self.inferred_tiling = inferred_tiling
         if self.inferred_tiling and self.img_processing == 'pyvips':
-            raise Exception('Not implemented yet!')
+            raise Exception('Inferred Tiling implementation only supports PIL, now.')
 
         if self.is_train:
             self.split_list = 'trainlist.txt'
@@ -201,20 +201,30 @@ class UCF_JHMDB_Dataset(Dataset):
                 f"Frame matching error.\nprev_frame: {target}\ncur_frame: {target_nf}"
 
         # transform
-        video_clip, inferred_tiles, target, target_nf = self.transform(video_clip, target, target_nf)
+        video_clip, target, target_nf, inferred_tiles = self.transform(video_clip, target, target_nf=target_nf)
         # List [T, 3, H, W] -> [3, T, H, W]
         video_clip = torch.stack(video_clip, dim=1)
-        inferred_tiles = torch.stack(inferred_tiles, dim=0)
+        if self.inferred_tiling and self.is_train:
+            inferred_tiles = torch.stack(inferred_tiles, dim=0)
+        else:
+            inferred_tiles = None
 
         # reformat target
-        target = {
-            'boxes': target[:, :4].float(),  # [N, 4]
-            'boxes_it': target_nf[:, :4].float(),  # [N, 4]
-            'labels': target[:, -1].long() - 1,  # [N,]
-            'orig_size': [ow, oh]
-        }
+        if self.inferred_tiling and self.is_train:
+            target = {
+                'boxes': target[:, :4].float(),  # [N, 4]
+                'boxes_it': target_nf[:, :4].float(),  # [N, 4]
+                'labels': target[:, -1].long() - 1,  # [N,]
+                'orig_size': [ow, oh]
+            }
+        else:
+            target = {
+                'boxes': target[:, :4].float(),  # [N, 4]
+                'labels': target[:, -1].long() - 1,  # [N,]
+                'orig_size': [ow, oh]
+            }
 
-        return frame_id, video_clip, inferred_tiles, target
+        return frame_id, video_clip, target, inferred_tiles
 
     def pull_anno(self, index):
         """ load a data """

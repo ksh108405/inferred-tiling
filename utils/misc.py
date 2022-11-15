@@ -68,8 +68,7 @@ def build_dataset(d_cfg, args, is_train=False, inferred_tiling=False):
             gt_folder=d_cfg['gt_folder'],
             save_path='./evaluator/eval_results/',
             transform=basetransform,
-            collate_fn=CollateFunc(),
-            img_processing=d_cfg['img_processing']
+            collate_fn=CollateFunc()
         )
 
     elif args.dataset == 'ava_v2.2':
@@ -187,19 +186,20 @@ class CollateFunc(object):
         for sample in batch:
             key_frame_id = sample[0]
             video_clip = sample[1]
-            inferred_tile = sample[2]
-            key_target = sample[3]
+            key_target = sample[2]
+            inferred_tile = sample[3]
 
             batch_frame_id.append(key_frame_id)
             batch_video_clips.append(video_clip)
-            batch_inferred_tiles.append(inferred_tile)
             batch_key_target.append(key_target)
+            batch_inferred_tiles.append(inferred_tile)
 
         # List [B, 3, T, H, W] -> [B, 3, T, H, W]
         batch_video_clips = torch.stack(batch_video_clips)
-        batch_inferred_tiles = torch.stack(batch_inferred_tiles)
+        if inferred_tile is not None:
+            batch_inferred_tiles = torch.stack(batch_inferred_tiles)
 
-        return batch_frame_id, batch_video_clips, batch_inferred_tiles, batch_key_target
+        return batch_frame_id, batch_video_clips, batch_key_target, batch_inferred_tiles
 
 
 class AVA_FocalLoss(object):

@@ -2,6 +2,9 @@ import os
 import torch
 import numpy as np
 from scipy.io import loadmat
+from PIL import Image
+from math import floor, ceil
+import torchvision.transforms.functional as F
 
 from dataset.ucf_jhmdb import UCF_JHMDB_Dataset, UCF_JHMDB_VIDEO_Dataset
 from utils.box_ops import rescale_bboxes
@@ -24,7 +27,9 @@ class UCF_JHMDB_Evaluator(object):
                  transform=None,
                  collate_fn=None,
                  gt_folder=None,
-                 save_path=None):
+                 save_path=None,
+                 inferred_tiling=False,
+                 d_cfg=None):
         self.data_root = data_root
         self.dataset = dataset
         self.model_name = model_name
@@ -34,6 +39,12 @@ class UCF_JHMDB_Evaluator(object):
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
         self.collate_fn = collate_fn
+        self.inferred_tiling = inferred_tiling
+
+        self.d_cfg = d_cfg
+
+        if self.inferred_tiling:
+            self.batch_size = 1
 
         self.gt_folder = gt_folder
         self.save_path = save_path
@@ -78,14 +89,50 @@ class UCF_JHMDB_Evaluator(object):
         
         epoch_size = len(self.testloader)
 
+        inferred_tiles = None
+        inferred_tile_coords = np.array([])
+        old_dir_name = ''
+        old_frame_idx = -1
+
         # inference
-        for iter_i, (batch_frame_id, batch_video_clip, batch_target) in enumerate(self.testloader):
+        for iter_i, (batch_frame_id, batch_video_clip, batch_target, _) in enumerate(self.testloader):
             # to device
             batch_video_clip = batch_video_clip.to(model.device)
 
+            if self.inferred_tiling and inferred_tile_coords.size != 0:
+                inferred_tiles = []
+                img_split = batch_frame_id[0].split('_')
+                key_frame_dir_name = ''
+                for i in range(1, len(img_split) - 1):
+                    key_frame_dir_name += img_split[i]
+                    if i != len(img_split) - 2:
+                        key_frame_dir_name += '_'
+
+                if key_frame_dir_name == old_dir_name and old_frame_idx == int(img_split[-1][:5]) - 1:
+                    key_frame_path = os.path.join(self.data_root, 'rgb-images', img_split[0],
+                                                  key_frame_dir_name, f'{img_split[-1][:5]}.jpg')
+                    key_frame = Image.open(key_frame_path).convert('RGB')
+                    for inferred_tile_coord in inferred_tile_coords:
+                        x1, y1, x2, y2 = inferred_tile_coord
+                        x1, y1 = floor(x1), floor(y1)
+                        x2, y2 = ceil(x2), ceil(y2)
+                        inferred_tiles.append(key_frame.crop((x1, y1, x2, y2)))
+                    inferred_tiles = [tile.resize((self.img_size, self.img_size)) for tile in inferred_tiles]
+                    inferred_tiles = [F.normalize(F.to_tensor(image), self.d_cfg['pixel_mean'], self.d_cfg['pixel_std'])
+                                      for image in inferred_tiles]
+                    inferred_tiles = torch.unsqueeze(torch.stack(inferred_tiles, dim=0), dim=0).to(model.device)
+                else:
+                    inferred_tiles = None
+
+                old_dir_name = key_frame_dir_name
+                old_frame_idx = int(img_split[-1][:5])
+            else:
+                inferred_tiles = None
+
+
             with torch.no_grad():
                 # inference
-                batch_scores, batch_labels, batch_bboxes = model(batch_video_clip)
+                batch_scores, batch_labels, batch_bboxes, batch_bboxes_it = model(batch_video_clip, inferred_tiles)
 
                 # process batch
                 for bi in range(len(batch_scores)):
@@ -93,11 +140,15 @@ class UCF_JHMDB_Evaluator(object):
                     scores = batch_scores[bi]
                     labels = batch_labels[bi]
                     bboxes = batch_bboxes[bi]
+                    if self.inferred_tiling:
+                        bboxes_it = batch_bboxes_it[bi]
                     target = batch_target[bi]
 
                     # rescale bbox
                     orig_size = target['orig_size']
                     bboxes = rescale_bboxes(bboxes, orig_size)
+                    if self.inferred_tiling:
+                        inferred_tile_coords = rescale_bboxes(bboxes_it, orig_size)
 
                     if not os.path.exists('results'):
                         os.mkdir('results')

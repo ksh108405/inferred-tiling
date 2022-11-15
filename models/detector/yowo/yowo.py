@@ -270,7 +270,7 @@ class YOWO(nn.Module):
         key_frame = video_clips[:, :, -1, :, :]
         # backbone
         feat_2d = self.backbone_2d(key_frame)  # [B, C1, H, W]
-        if self.inferred_tiling:
+        if self.inferred_tiling and inferred_tiles is not None:
             feat_2d_it = 0
             inferred_tiles = inferred_tiles.permute(1, 0, 2, 3, 4)
             for inferred_tile in inferred_tiles:
@@ -351,7 +351,7 @@ class YOWO(nn.Module):
             key_frame = video_clips[:, :, -1, :, :]
             # backbone
             feat_2d = self.backbone_2d(key_frame)  # [B, C1, H, W]
-            if self.inferred_tiling:
+            if self.inferred_tiling and inferred_tiles is not None:
                 feat_2d_it = 0
                 inferred_tiles = inferred_tiles.permute(1, 0, 2, 3, 4)
                 for inferred_tile in inferred_tiles:

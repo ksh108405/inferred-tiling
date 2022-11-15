@@ -225,7 +225,7 @@ class Augmentation(object):
         target = torch.as_tensor(target).float()
         target_nf = torch.as_tensor(target_nf).float()
 
-        return video_clip, inferred_tiles, target, target_nf
+        return video_clip, target, target_nf, inferred_tiles
 
     # Transform for Testing
 
@@ -240,7 +240,7 @@ class BaseTransform(object):
     def to_tensor(self, video_clip):
         return [F.normalize(F.to_tensor(image), self.pixel_mean, self.pixel_std) for image in video_clip]
 
-    def __call__(self, video_clip, target=None, normalize=True):
+    def __call__(self, video_clip, target=None, normalize=True, target_nf=None):
         oh = video_clip[0].height
         ow = video_clip[0].width
 
@@ -256,12 +256,19 @@ class BaseTransform(object):
             if normalize:
                 target[..., [0, 2]] /= ow
                 target[..., [1, 3]] /= oh
-
         else:
             target = np.array([])
+
+        if target_nf is not None:
+            if normalize:
+                target_nf[..., [0, 2]] /= ow
+                target_nf[..., [1, 3]] /= oh
+        else:
+            target_nf = np.array([])
 
         # to tensor
         video_clip = self.to_tensor(video_clip)
         target = torch.as_tensor(target).float()
+        target_nf = torch.as_tensor(target_nf).float()
 
-        return video_clip, target
+        return video_clip, target, target_nf, None

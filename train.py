@@ -218,7 +218,7 @@ def train():
             dataloader.batch_sampler.sampler.set_epoch(epoch)
 
             # train one epoch
-        for iter_i, (frame_ids, video_clips, inferred_tiles, targets) in enumerate(dataloader):
+        for iter_i, (frame_ids, video_clips, targets, inferred_tiles) in enumerate(dataloader):
             ni = iter_i + epoch * epoch_size
 
             # warmup
@@ -320,10 +320,12 @@ def train():
                 print('Saving state, epoch:', epoch + 1)
                 weight_name = '{}_epoch_{}'.format(args.version, epoch + 1)
                 checkpoint_path = os.path.join(path_to_save, weight_name)
-                file_dup = 0
-                while os.path.isfile(checkpoint_path + '.pth'):
-                    file_dup += 1
-                    checkpoint_path += f'_{file_dup}'
+                if os.path.isfile(checkpoint_path + '.pth'):
+                    checkpoint_path += '_'
+                    file_dup = 1
+                    while os.path.isfile(f'{checkpoint_path}{file_dup}.pth'):
+                        file_dup += 1
+                    checkpoint_path += f'{file_dup}'
                 torch.save({'model': model_eval.state_dict(),
                             'epoch': epoch,
                             'args': args},

@@ -43,6 +43,10 @@ def parse_args():
     parser.add_argument('--topk', default=40, type=int,
                         help='NMS threshold')
 
+    # Inferred Tiling
+    parser.add_argument('-it', '--inferred_tiling', action='store_true', default=False,
+                        help='use inferred tiling technic')
+
     return parser.parse_args()
 
 
@@ -62,7 +66,9 @@ def ucf_jhmdb_eval(args, d_cfg, model, transform, collate_fn):
             transform=transform,
             collate_fn=collate_fn,
             gt_folder=d_cfg['gt_folder'],
-            save_path=args.save_path
+            save_path=args.save_path,
+            inferred_tiling=args.inferred_tiling,
+            d_cfg=d_cfg
             )
         # evaluate
         evaluator.evaluate_frame_map(model, show_pr_curve=True)
@@ -115,9 +121,17 @@ if __name__ == '__main__':
     elif args.dataset == 'ava_v2.2':
         num_classes = 80
 
+    elif args.dataset == 'aihub_park':
+        num_classes = 4
+
     else:
-        print('unknow dataset.')
-        exit(0)
+        raise Exception("Unknown Dataset!")
+
+    if args.dataset == 'ava_v2.2' and args.inferred_tiling:
+        raise NotImplementedError
+
+    if args.cal_video_mAP and args.inferred_tiling:
+        raise NotImplementedError
 
     # cuda
     if args.cuda:
@@ -139,7 +153,8 @@ if __name__ == '__main__':
         device=device, 
         num_classes=num_classes, 
         trainable=False,
-        eval_mode=True
+        eval_mode=True,
+        inferred_tiling=args.inferred_tiling
         )
 
     # load trained weight
@@ -156,7 +171,7 @@ if __name__ == '__main__':
         )
 
     # run
-    if args.dataset in ['ucf24', 'jhmdb21']:
+    if args.dataset in ['ucf24', 'jhmdb21', 'aihub_park']:
         ucf_jhmdb_eval(
             args=args,
             d_cfg=d_cfg,
