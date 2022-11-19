@@ -10,7 +10,7 @@ from PIL import Image
 class Augmentation(object):
     def __init__(self, img_size=224, pixel_mean=[0., 0., 0.], pixel_std=[1., 1., 1.], jitter=0.2, hue=0.1,
                  saturation=1.5, exposure=1.5, img_processing='PIL', inferred_tiling=False, it_jitter=0.1,
-                 it_drop=0.1, it_wrong=0.3, it_wrong_surplus=0.5):
+                 it_drop=0., it_wrong=0., it_wrong_surplus=0.):
         self.img_size = img_size
         self.pixel_mean = pixel_mean
         self.pixel_std = pixel_std
@@ -149,7 +149,7 @@ class Augmentation(object):
                 elif random_det < self.it_drop + self.it_wrong:  # wrong crop
                     cropped_tiles.append(self.random_tile_crop(video_clip[-1], height, width))
                     random_det_surplus = np.random.rand()
-                    if random_det_surplus < 0.5:
+                    if random_det_surplus < self.it_wrong_surplus:  # add wrong crop twice
                         cropped_tiles.append(self.random_tile_crop(video_clip[-1], height, width))
                 else:  # normal crop
                     x1, y1, x2, y2 = box[:4]

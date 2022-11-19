@@ -22,7 +22,8 @@ class YOWO(nn.Module):
                  topk=1000,
                  trainable=False,
                  multi_hot=False,
-                 inferred_tiling=False):
+                 inferred_tiling=False,
+                 it_weight_share=False):
         super(YOWO, self).__init__()
         self.cfg = cfg
         self.device = device
@@ -38,6 +39,7 @@ class YOWO(nn.Module):
         self.num_anchors = len(anchor_size)
         self.anchor_size = torch.as_tensor(anchor_size)
         self.inferred_tiling = inferred_tiling
+        self.it_weight_share = it_weight_share
         if self.inferred_tiling and self.multi_hot:
             raise Exception('Not implemented yet!')
 
@@ -49,7 +51,10 @@ class YOWO(nn.Module):
         # 2D backbone
         self.backbone_2d, bk_dim_2d = build_backbone_2d(cfg, pretrained=cfg['pretrained_2d'] and trainable)
         if self.inferred_tiling:
-            self.backbone_2d_it, _ = build_backbone_2d(cfg, pretrained=cfg['pretrained_2d'] and trainable)
+            if self.it_weight_share:
+                self.backbone_2d_it = self.backbone_2d
+            else:
+                self.backbone_2d_it, _ = build_backbone_2d(cfg, pretrained=cfg['pretrained_2d'] and trainable)
 
         # 3D backbone
         self.backbone_3d, bk_dim_3d = build_backbone_3d(cfg, pretrained=cfg['pretrained_3d'] and trainable)

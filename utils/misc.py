@@ -29,7 +29,10 @@ def build_dataset(d_cfg, args, is_train=False, inferred_tiling=False):
         saturation=d_cfg['saturation'],
         exposure=d_cfg['exposure'],
         img_processing=d_cfg['img_processing'],
-        inferred_tiling=(inferred_tiling and is_train)
+        inferred_tiling=(inferred_tiling and is_train),
+        it_drop=args.it_drop,
+        it_wrong=args.it_wrong,
+        it_wrong_surplus=args.it_wrong_surplus
     )
     basetransform = BaseTransform(
         img_size=d_cfg['test_size'],

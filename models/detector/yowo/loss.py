@@ -123,7 +123,7 @@ class Criterion(object):
                                matched_gt_box_it,
                                box_mode="xyxy",
                                iou_type='giou')
-            loss_box_it = ((1.0 - ious).sum() + (1.0 - ious_it).sum()) / (2 * batch_size) * self.loss_reg_weight
+            loss_box_it = (1.0 - ious_it).sum() / batch_size * self.loss_reg_weight
 
         # cls loss
         matched_pred_cls = pred_cls[foreground_mask]
@@ -147,7 +147,7 @@ class Criterion(object):
 
         # total loss
         if self.inferred_tiling:
-            losses = loss_conf + loss_cls + ((loss_box + loss_box_it) / 2)
+            losses = loss_conf + loss_cls + (loss_box + loss_box_it)
         else:
             losses = loss_conf + loss_cls + loss_box
 

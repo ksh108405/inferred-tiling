@@ -73,6 +73,14 @@ def parse_args():
     # Inferred Tiling
     parser.add_argument('-it', '--inferred_tiling', action='store_true', default=False,
                         help='use inferred tiling technic')
+    parser.add_argument('--it_weight_share', action='store_true', default=False,
+                        help='Share weights between whole-image net and object-tile net')
+    parser.add_argument('--it_drop', default=0., type=float,
+                        help='probability of dropping a object tile')
+    parser.add_argument('--it_wrong', default=0., type=float,
+                        help='probability of cropping an wrong object tile')
+    parser.add_argument('--it_wrong_surplus', default=0., type=float,
+                        help='probability of cropping an surplus wrong object tile')
 
     # DDP train
     parser.add_argument('-dist', '--distributed', action='store_true', default=False,
@@ -147,7 +155,8 @@ def train():
                       num_classes=num_classes,
                       trainable=True,
                       resume=args.resume,
-                      inferred_tiling=args.inferred_tiling)
+                      inferred_tiling=args.inferred_tiling,
+                      it_weight_share=args.it_weight_share)
     model = net
     model = model.to(device).train()
 
@@ -220,7 +229,43 @@ def train():
             # train one epoch
         for iter_i, (frame_ids, video_clips, targets, inferred_tiles) in enumerate(dataloader):
             ni = iter_i + epoch * epoch_size
-
+            """
+            # visualization
+            for batch_idx, video_clip in enumerate(video_clips):
+                video_clip = video_clip.permute(1, 2, 3, 0)
+                for image_idx, image in enumerate(video_clip):
+                    image = np.array(image)
+                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                    if image_idx == len(video_clip) - 1:
+                        bboxes = targets[batch_idx]['boxes']
+                        bboxes_it = targets[batch_idx]['boxes_it']
+                        for bbox in bboxes:
+                            bbox_left = bbox[0] * 224
+                            bbox_top = bbox[1] * 224
+                            bbox_right = bbox[2] * 224
+                            bbox_bottom = bbox[3] * 224
+                            print(f'{frame_ids[batch_idx]}: {bbox_left}, {bbox_top}, {bbox_right - bbox_left}, {bbox_bottom - bbox_top}')
+                            image = cv2.rectangle(image, (int(bbox_left), int(bbox_top)), (int(bbox_right), int(bbox_bottom)), (0, 0, 255), 2)
+                        if bboxes_it is not None:
+                            for bbox in bboxes_it:
+                                bbox_left = bbox[0] * 224
+                                bbox_top = bbox[1] * 224
+                                bbox_right = bbox[2] * 224
+                                bbox_bottom = bbox[3] * 224
+                                print(f'{frame_ids[batch_idx]}: {bbox_left}, {bbox_top}, {bbox_right - bbox_left}, {bbox_bottom - bbox_top}')
+                                image = cv2.rectangle(image, (int(bbox_left), int(bbox_top)), (int(bbox_right), int(bbox_bottom)), (128, 128, 255), 2)
+                    cv2.imshow('image', image)
+                    cv2.waitKey(0)
+                    # exit(0)
+                if inferred_tiles is not None:
+                    for image_idx, tile in enumerate(inferred_tiles[batch_idx]):
+                        tile = tile.permute(1, 2, 0)
+                        tile = np.array(tile)
+                        tile = cv2.cvtColor(tile, cv2.COLOR_RGB2BGR)
+                        cv2.imshow('image', tile)
+                        cv2.waitKey(0)
+            # exit(0)
+            """
             # warmup
             if ni < wp_iter and warmup:
                 warmup_scheduler.warmup(ni, optimizer)

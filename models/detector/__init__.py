@@ -11,7 +11,8 @@ def build_model(args,
                 trainable=False,
                 eval_mode=False,
                 resume=None,
-                inferred_tiling=False):
+                inferred_tiling=False,
+                it_weight_share=False):
     print('==============================')
     print('Build {} ...'.format(args.version.upper()))
 
@@ -42,7 +43,8 @@ def build_model(args,
         topk=args.topk,
         trainable=trainable,
         multi_hot=d_cfg['multi_hot'],
-        inferred_tiling=inferred_tiling
+        inferred_tiling=inferred_tiling,
+        it_weight_share=it_weight_share
     )
 
     # Freeze backbone

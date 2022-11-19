@@ -46,6 +46,8 @@ def parse_args():
     # Inferred Tiling
     parser.add_argument('-it', '--inferred_tiling', action='store_true', default=False,
                         help='use inferred tiling technic')
+    parser.add_argument('--it_weight_share', action='store_true', default=False,
+                        help='Share weights between whole-image net and object-tile net')
 
     return parser.parse_args()
 
@@ -154,7 +156,8 @@ if __name__ == '__main__':
         num_classes=num_classes, 
         trainable=False,
         eval_mode=True,
-        inferred_tiling=args.inferred_tiling
+        inferred_tiling=args.inferred_tiling,
+        it_weight_share=args.it_weight_share
         )
 
     # load trained weight
