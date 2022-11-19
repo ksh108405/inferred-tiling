@@ -143,9 +143,6 @@ class YOLOv2(nn.Module):
         """
         # backbone
         outputs = self.backbone(x)
-        print(outputs['c3'].shape)
-        print(outputs['c4'].shape)
-        print(outputs['c5'].shape)
         c4, c5 = outputs['c4'], outputs['c5']
         p5 = self.convsets_1(c5)
 
