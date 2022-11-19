@@ -6,6 +6,7 @@ from ...backbone import build_backbone_2d
 from ...backbone import build_backbone_3d
 from .encoder import build_encoder
 from .loss import build_criterion
+from .aggregator import SelfAttAggregator
 
 
 # You Only Watch Once
@@ -23,7 +24,8 @@ class YOWO(nn.Module):
                  trainable=False,
                  multi_hot=False,
                  inferred_tiling=False,
-                 it_weight_share=False):
+                 it_weight_share=False,
+                 it_feature_agg='sum'):
         super(YOWO, self).__init__()
         self.cfg = cfg
         self.device = device
@@ -40,6 +42,7 @@ class YOWO(nn.Module):
         self.anchor_size = torch.as_tensor(anchor_size)
         self.inferred_tiling = inferred_tiling
         self.it_weight_share = it_weight_share
+        self.it_feature_agg = it_feature_agg
         if self.inferred_tiling and self.multi_hot:
             raise Exception('Not implemented yet!')
 
@@ -55,6 +58,8 @@ class YOWO(nn.Module):
                 self.backbone_2d_it = self.backbone_2d
             else:
                 self.backbone_2d_it, _ = build_backbone_2d(cfg, pretrained=cfg['pretrained_2d'] and trainable)
+            if self.it_feature_agg == 'self-att':
+                self.it_fa = SelfAttAggregator(channels=bk_dim_2d)
 
         # 3D backbone
         self.backbone_3d, bk_dim_3d = build_backbone_3d(cfg, pretrained=cfg['pretrained_3d'] and trainable)
@@ -266,21 +271,31 @@ class YOWO(nn.Module):
         return out_boxes
 
     @torch.no_grad()
-    def inference(self, video_clips, inferred_tiles):
+    def inference(self, video_clips, inferred_tiles, ot_bboxes=None):
         """
         Input:
             video_clips: (Tensor) -> [B, 3, clip_len, H, W].
-            inferred_tiles: (Tensor) -> [B, num_obj, 3, H, W].
+            object_tiles: (Tensor) -> [B, num_obj, 3, H, W].
         """
         key_frame = video_clips[:, :, -1, :, :]
         # backbone
         feat_2d = self.backbone_2d(key_frame)  # [B, C1, H, W]
         if self.inferred_tiling and inferred_tiles is not None:
-            feat_2d_it = 0
-            inferred_tiles = inferred_tiles.permute(1, 0, 2, 3, 4)
-            for inferred_tile in inferred_tiles:
-                feat_2d_it += self.backbone_2d(inferred_tile)  # [B, C1, H, W]
-            feat_2d = (feat_2d + feat_2d_it) / (inferred_tiles.size(0) + 1)
+            if self.it_feature_agg == 'sum':
+                feat_2d_it = 0
+                inferred_tiles = inferred_tiles.permute(1, 0, 2, 3, 4)
+                for inferred_tile in inferred_tiles:
+                    feat_2d_it += self.backbone_2d_it(inferred_tile)  # [B, C1, H, W]
+                feat_2d = (feat_2d + feat_2d_it) / (inferred_tiles.size(0) + 1)
+            elif self.it_feature_agg == 'self-att':
+                feat_2d_it = [feat_2d]
+                inferred_tiles = inferred_tiles.permute(1, 0, 2, 3, 4)
+                for inferred_tile in inferred_tiles:
+                    feat_2d_it.append(self.backbone_2d_it(inferred_tile))  # [B, C1, H, W]
+                feat_2d = self.it_fa(feat_2d_it, ot_bboxes)  # [B, C1, H, W]
+            else:
+                raise Exception('Unknown inferred tiling feature aggregation method.')
+
         feat_3d = self.backbone_3d(video_clips).squeeze(2)  # [B, C2, H, W]
 
         # channel encoder
@@ -344,24 +359,34 @@ class YOWO(nn.Module):
 
             return batch_scores, batch_labels, batch_bboxes, batch_bboxes_it
 
-    def forward(self, video_clips, inferred_tiles, targets=None):
+    def forward(self, video_clips, object_tiles, targets=None, ot_bboxes=None):
         """
         Input:
             video_clips: (Tensor) -> [B, 3, T, H, W].
             targets: (List) -> [[x1, y1, x2, y2, label, frame_id], ...]
         """
         if not self.trainable:
-            return self.inference(video_clips, inferred_tiles)
+            return self.inference(video_clips, object_tiles, ot_bboxes)
         else:
             key_frame = video_clips[:, :, -1, :, :]
             # backbone
             feat_2d = self.backbone_2d(key_frame)  # [B, C1, H, W]
-            if self.inferred_tiling and inferred_tiles is not None:
-                feat_2d_it = 0
-                inferred_tiles = inferred_tiles.permute(1, 0, 2, 3, 4)
-                for inferred_tile in inferred_tiles:
-                    feat_2d_it += self.backbone_2d(inferred_tile)  # [B, C1, H, W]
-                feat_2d = (feat_2d + feat_2d_it) / (inferred_tiles.size(0) + 1)
+            if self.inferred_tiling and object_tiles is not None:
+                if self.it_feature_agg == 'sum':
+                    feat_2d_it = 0
+                    object_tiles = object_tiles.permute(1, 0, 2, 3, 4)
+                    for inferred_tile in object_tiles:
+                        feat_2d_it += self.backbone_2d_it(inferred_tile)  # [B, C1, H, W]
+                    feat_2d = (feat_2d + feat_2d_it) / (object_tiles.size(0) + 1)
+                elif self.it_feature_agg == 'self-att':
+                    feat_2d_it = [feat_2d]
+                    object_tiles = object_tiles.permute(1, 0, 2, 3, 4)
+                    for inferred_tile in object_tiles:
+                        feat_2d_it.append(self.backbone_2d_it(inferred_tile))  # [B, C1, H, W]
+                    feat_2d = self.it_fa(feat_2d_it, targets['boxes_ot'])  # [B, C1, H, W]
+                else:
+                    raise Exception('Unknown inferred tiling feature aggregation method.')
+
             feat_3d = self.backbone_3d(video_clips).squeeze(2)  # [B, C2, H, W]
 
             # channel encoder

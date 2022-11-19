@@ -102,6 +102,7 @@ class UCF_JHMDB_Evaluator(object):
 
             if self.inferred_tiling and inferred_tile_coords.size != 0:
                 inferred_tiles = []
+                it_bboxes = []
                 img_split = batch_frame_id[0].split('_')
                 key_frame_dir_name = ''
                 for i in range(1, len(img_split) - 1):
@@ -113,27 +114,33 @@ class UCF_JHMDB_Evaluator(object):
                     key_frame_path = os.path.join(self.data_root, 'rgb-images', img_split[0],
                                                   key_frame_dir_name, f'{img_split[-1][:5]}.jpg')
                     key_frame = Image.open(key_frame_path).convert('RGB')
+                    h = key_frame.height
+                    w = key_frame.width
                     for inferred_tile_coord in inferred_tile_coords:
                         x1, y1, x2, y2 = inferred_tile_coord
                         x1, y1 = floor(x1), floor(y1)
                         x2, y2 = ceil(x2), ceil(y2)
                         inferred_tiles.append(key_frame.crop((x1, y1, x2, y2)))
+                        it_bboxes.append([x1 / w, y1 / h, x2 / w, y2 / h])
                     inferred_tiles = [tile.resize((self.img_size, self.img_size)) for tile in inferred_tiles]
                     inferred_tiles = [F.normalize(F.to_tensor(image), self.d_cfg['pixel_mean'], self.d_cfg['pixel_std'])
                                       for image in inferred_tiles]
                     inferred_tiles = torch.unsqueeze(torch.stack(inferred_tiles, dim=0), dim=0).to(model.device)
+                    it_bboxes = torch.tensor(it_bboxes).to(model.device)
                 else:
                     inferred_tiles = None
+                    it_bboxes = None
 
                 old_dir_name = key_frame_dir_name
                 old_frame_idx = int(img_split[-1][:5])
             else:
                 inferred_tiles = None
-
+                it_bboxes = None
 
             with torch.no_grad():
                 # inference
-                batch_scores, batch_labels, batch_bboxes, batch_bboxes_it = model(batch_video_clip, inferred_tiles)
+                batch_scores, batch_labels, batch_bboxes, batch_bboxes_it \
+                    = model(batch_video_clip, inferred_tiles, it_bboxes)
 
                 # process batch
                 for bi in range(len(batch_scores)):

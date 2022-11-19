@@ -72,7 +72,7 @@ class SelfAttAggregator(nn.Module):
 
     def forward(self, tile_list, bbox_list):  # [tensor(1, 425, 7, 7), ...]
         tile_list_ = [self.to_patch_embedding(tile) for tile in tile_list]  # [tensor(1, 7, 7, 64), ...]
-        pe_list = [pe_sincos_2d(tile, bbox) for tile, bbox in zip(tile_list_, bbox_list[0])]  # [tensor(1, 49, 64), ...]
+        pe_list = [pe_sincos_2d(tile, bbox) for tile, bbox in zip(tile_list_, bbox_list)]  # [tensor(1, 49, 64), ...]
         tile_list_ = [rearrange(rearrange(tile, 'b ... d -> b (...) d') + pe, 'b ... -> b (...)')
                        for tile, pe in zip(tile_list_, pe_list)]  # [tensor(1, 3136), ...]
         tile_list_ = torch.stack(tile_list_, dim=1)  # tensor(1, 1 + num_obj, 3136)
@@ -87,6 +87,6 @@ if __name__ == '__main__':
     )
 
     tile_list = [torch.randn(1, 425, 7, 7), torch.randn(1, 425, 7, 7), torch.randn(1, 425, 7, 7)]
-    bbox_list = [[[0, 0, 1, 1], [0.4, 0.4, 0.6, 0.6], [0.3, 0.3, 0.4, 0.4]]]
+    bbox_list = [[0, 0, 1, 1], [0.4, 0.4, 0.6, 0.6], [0.3, 0.3, 0.4, 0.4]]
 
     preds = v(tile_list, bbox_list)  # (1, 1000)

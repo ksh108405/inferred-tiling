@@ -75,6 +75,8 @@ def parse_args():
                         help='use inferred tiling technic')
     parser.add_argument('--it_weight_share', action='store_true', default=False,
                         help='Share weights between whole-image net and object-tile net')
+    parser.add_argument('--it_feature_agg', default='sum', type=str, choices=['sum', 'self-att'],
+                        help='Share weights between whole-image net and object-tile net')
     parser.add_argument('--it_drop', default=0., type=float,
                         help='probability of dropping a object tile')
     parser.add_argument('--it_wrong', default=0., type=float,
@@ -156,7 +158,8 @@ def train():
                       trainable=True,
                       resume=args.resume,
                       inferred_tiling=args.inferred_tiling,
-                      it_weight_share=args.it_weight_share)
+                      it_weight_share=args.it_weight_share,
+                      it_feature_agg=args.it_feature_agg)
     model = net
     model = model.to(device).train()
 
@@ -227,7 +230,7 @@ def train():
             dataloader.batch_sampler.sampler.set_epoch(epoch)
 
             # train one epoch
-        for iter_i, (frame_ids, video_clips, targets, inferred_tiles) in enumerate(dataloader):
+        for iter_i, (frame_ids, video_clips, targets, object_tiles) in enumerate(dataloader):
             ni = iter_i + epoch * epoch_size
             """
             # visualization
@@ -257,8 +260,8 @@ def train():
                     cv2.imshow('image', image)
                     cv2.waitKey(0)
                     # exit(0)
-                if inferred_tiles is not None:
-                    for image_idx, tile in enumerate(inferred_tiles[batch_idx]):
+                if object_tiles is not None:
+                    for image_idx, tile in enumerate(object_tiles[batch_idx]):
                         tile = tile.permute(1, 2, 0)
                         tile = np.array(tile)
                         tile = cv2.cvtColor(tile, cv2.COLOR_RGB2BGR)
@@ -278,17 +281,17 @@ def train():
 
             # to device
             video_clips = video_clips.to(device)
-            if inferred_tiles != [None]:
-                inferred_tiles = inferred_tiles.to(device)
+            if object_tiles != [None]:
+                object_tiles = object_tiles.to(device)
             else:
-                inferred_tiles = None
+                object_tiles = None
 
             # inference
             if args.fp16:
                 with torch.cuda.amp.autocast(enabled=args.fp16):
-                    loss_dict, _ = model(video_clips, inferred_tiles, targets=targets)
+                    loss_dict, _ = model(video_clips, object_tiles, targets=targets)
             else:
-                loss_dict, _ = model(video_clips, inferred_tiles, targets=targets)
+                loss_dict, _ = model(video_clips, object_tiles, targets=targets)
 
             losses = loss_dict['losses']
             losses = losses / d_cfg['accumulate']

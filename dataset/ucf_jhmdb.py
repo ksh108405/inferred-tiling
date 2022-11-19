@@ -201,19 +201,20 @@ class UCF_JHMDB_Dataset(Dataset):
                 f"Frame matching error.\nprev_frame: {target}\ncur_frame: {target_nf}"
 
         # transform
-        video_clip, target, target_nf, inferred_tiles = self.transform(video_clip, target, target_nf=target_nf)
+        video_clip, target, target_nf, object_tiles, ot_bboxes = self.transform(video_clip, target, target_nf=target_nf)
         # List [T, 3, H, W] -> [3, T, H, W]
         video_clip = torch.stack(video_clip, dim=1)
-        if self.inferred_tiling and self.is_train and inferred_tiles is not None:
-            inferred_tiles = torch.stack(inferred_tiles, dim=0)
+        if self.inferred_tiling and self.is_train and object_tiles is not None:
+            object_tiles = torch.stack(object_tiles, dim=0)
         else:
-            inferred_tiles = None
+            object_tiles = None
 
         # reformat target
         if self.inferred_tiling and self.is_train:
             target = {
                 'boxes': target[:, :4].float(),  # [N, 4]
                 'boxes_it': target_nf[:, :4].float(),  # [N, 4]
+                'boxes_ot': ot_bboxes.float(),  # [N, 4]
                 'labels': target[:, -1].long() - 1,  # [N,]
                 'orig_size': [ow, oh]
             }
@@ -224,7 +225,7 @@ class UCF_JHMDB_Dataset(Dataset):
                 'orig_size': [ow, oh]
             }
 
-        return frame_id, video_clip, target, inferred_tiles
+        return frame_id, video_clip, target, object_tiles
 
     def pull_anno(self, index):
         """ load a data """

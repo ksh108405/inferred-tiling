@@ -97,7 +97,7 @@ class Augmentation(object):
         t_right = cx + (w // 2)
         t_top = cy - (h // 2)
         t_bot = cy + (h // 2)
-        return img.crop((t_left, t_top, t_right, t_bot))
+        return img.crop((t_left, t_top, t_right, t_bot)), [t_left, t_top, t_right, t_bot]
 
 
     def random_crop(self, target, video_clip, width, height):
@@ -142,15 +142,20 @@ class Augmentation(object):
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             """
             cropped_tiles = []
+            cropped_bboxes = []
             random_det = np.random.rand()
             for box in target:
                 if random_det < self.it_drop:  # drop
                     continue
                 elif random_det < self.it_drop + self.it_wrong:  # wrong crop
-                    cropped_tiles.append(self.random_tile_crop(video_clip[-1], height, width))
+                    tiles, bboxes = self.random_tile_crop(video_clip[-1], height, width)
+                    cropped_tiles.append(tiles)
+                    cropped_bboxes.append(bboxes)
                     random_det_surplus = np.random.rand()
                     if random_det_surplus < self.it_wrong_surplus:  # add wrong crop twice
-                        cropped_tiles.append(self.random_tile_crop(video_clip[-1], height, width))
+                        tiles, bboxes = self.random_tile_crop(video_clip[-1], height, width)
+                        cropped_tiles.append(tiles)
+                        cropped_bboxes.append(bboxes)
                 else:  # normal crop
                     x1, y1, x2, y2 = box[:4]
                     x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
@@ -167,6 +172,7 @@ class Augmentation(object):
                     t_top   = random.randint(-dh + tt, dh + tt)
                     t_bot   = random.randint(-dh + tb, dh + tb)
                     cropped_tiles.append(video_clip[-1].crop((t_left, t_top, t_right, t_bot)))
+                    cropped_bboxes.append([t_left, t_top, t_right, t_bot])
                     """
                     image = cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     image = cv2.rectangle(image, (dw + tl, dh + tt), (tr - dw, tb - dh), (0, 0, 255), 2)  # min
@@ -177,10 +183,12 @@ class Augmentation(object):
             """
             if cropped_tiles == []:
                 cropped_tiles = None
+            if cropped_bboxes == []:
+                cropped_bboxes = None
         else:
             cropped_tiles = None
 
-        return cropped_clip, cropped_tiles, dx, dy, sx, sy
+        return cropped_clip, cropped_tiles, cropped_bboxes, dx, dy, sx, sy
 
     def apply_bbox(self, target, ow, oh, dx, dy, sx, sy, inferred_tile=False):
         sx, sy = 1. / sx, 1. / sy
@@ -217,9 +225,9 @@ class Augmentation(object):
 
         # random crop
         if self.inferred_tiling:
-            video_clip, inferred_tiles, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
+            video_clip, object_tiles, ot_bboxes, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
         else:
-            video_clip, _, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
+            video_clip, _, _, dx, dy, sx, sy = self.random_crop(target, video_clip, ow, oh)
 
         # resize
         if self.img_processing == 'PIL':
@@ -228,21 +236,21 @@ class Augmentation(object):
             video_clip = [img.thumbnail_image(self.img_size, height=self.img_size, size='force') for img in video_clip]
             video_clip = [Image.fromarray(image.numpy()).convert('RGB') for image in video_clip]
         if self.inferred_tiling:
-            if inferred_tiles is not None:
-                inferred_tiles = [tile.resize([self.img_size, self.img_size]) for tile in inferred_tiles]
+            if object_tiles is not None:
+                object_tiles = [tile.resize([self.img_size, self.img_size]) for tile in object_tiles]
 
         # random flip
         flip = random.randint(0, 1)
         if flip:
             video_clip = [img.transpose(Image.FLIP_LEFT_RIGHT) for img in video_clip]
             if self.inferred_tiling:
-                if inferred_tiles is not None:
-                    inferred_tiles = [tile.transpose(Image.FLIP_LEFT_RIGHT) for tile in inferred_tiles]
+                if object_tiles is not None:
+                    object_tiles = [tile.transpose(Image.FLIP_LEFT_RIGHT) for tile in object_tiles]
 
         # distort
         if self.inferred_tiling:
-            if inferred_tiles is not None:
-                video_clip, inferred_tiles = self.random_distort_image(video_clip, inferred_tiles)
+            if object_tiles is not None:
+                video_clip, object_tiles = self.random_distort_image(video_clip, object_tiles)
         else:
             video_clip, _ = self.random_distort_image(video_clip, None)
 
@@ -257,20 +265,27 @@ class Augmentation(object):
                     target_nf[..., [0, 2]] = 1.0 - target_nf[..., [2, 0]]
             else:
                 target_nf = np.array([])
+            if ot_bboxes is not None:
+                ot_bboxes = self.apply_bbox(ot_bboxes, ow, oh, dx, dy, sx, sy, True)
+                if flip:
+                    ot_bboxes[..., [0, 2]] = 1.0 - ot_bboxes[..., [2, 0]]
+            else:
+                ot_bboxes = np.array([])
         else:
             target = np.array([])
 
         # to tensor
         video_clip = self.to_tensor(video_clip)
         if self.inferred_tiling:
-            if inferred_tiles is not None:
-                inferred_tiles = self.to_tensor(inferred_tiles)
+            if object_tiles is not None:
+                object_tiles = self.to_tensor(object_tiles)
         else:
-            inferred_tiles = None
+            object_tiles = None
         target = torch.as_tensor(target).float()
         target_nf = torch.as_tensor(target_nf).float()
+        ot_bboxes = torch.as_tensor(ot_bboxes).float()
 
-        return video_clip, target, target_nf, inferred_tiles
+        return video_clip, target, target_nf, object_tiles, ot_bboxes
 
     # Transform for Testing
 

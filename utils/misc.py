@@ -190,16 +190,16 @@ class CollateFunc(object):
             key_frame_id = sample[0]
             video_clip = sample[1]
             key_target = sample[2]
-            inferred_tile = sample[3]
+            object_tiles = sample[3]
 
             batch_frame_id.append(key_frame_id)
             batch_video_clips.append(video_clip)
             batch_key_target.append(key_target)
-            batch_inferred_tiles.append(inferred_tile)
+            batch_inferred_tiles.append(object_tiles)
 
         # List [B, 3, T, H, W] -> [B, 3, T, H, W]
         batch_video_clips = torch.stack(batch_video_clips)
-        if inferred_tile is not None:
+        if object_tiles is not None:
             batch_inferred_tiles = torch.stack(batch_inferred_tiles)
 
         return batch_frame_id, batch_video_clips, batch_key_target, batch_inferred_tiles
