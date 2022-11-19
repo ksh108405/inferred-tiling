@@ -113,7 +113,7 @@ class DarkNet19(nn.Module):
 
 # YOLOv2
 class YOLOv2(nn.Module):
-    def __init__(self):
+    def __init__(self, class_num=80):
         super(YOLOv2, self).__init__()
 
         # backbone
@@ -131,7 +131,7 @@ class YOLOv2(nn.Module):
 
         # output
         self.convsets_2 = Conv_BN_LeakyReLU(1280, 1024, ksize=3, padding=1)
-        self.pred = nn.Conv2d(1024, 425, kernel_size=1) # 425 = 5x(80 + 5)
+        self.pred = nn.Conv2d(1024, 5*(class_num + 5), kernel_size=1)  # 425 = 5x(80 + 5)
         
 
     def forward(self, x):
@@ -143,6 +143,9 @@ class YOLOv2(nn.Module):
         """
         # backbone
         outputs = self.backbone(x)
+        print(outputs['c3'].shape)
+        print(outputs['c4'].shape)
+        print(outputs['c5'].shape)
         c4, c5 = outputs['c4'], outputs['c5']
         p5 = self.convsets_1(c5)
 
@@ -158,9 +161,9 @@ class YOLOv2(nn.Module):
 
 
 # build YOLOv2
-def build_yolov2(pretrained):
-    model = YOLOv2()
-    bk_dim = 425
+def build_yolov2(pretrained, class_num=80):
+    model = YOLOv2(class_num=class_num)
+    bk_dim = 5*(class_num + 5)
 
     # Load COCO pretrained weight
     if pretrained:
@@ -177,12 +180,31 @@ def build_yolov2(pretrained):
                 shape_model = tuple(model_state_dict[k].shape)
                 shape_checkpoint = tuple(checkpoint_state_dict[k].shape)
                 if shape_model != shape_checkpoint:
-                    print(k)
+                    print(f'Warning: Shape mismatch for {k}: {shape_model} != {shape_checkpoint}')
                     checkpoint_state_dict.pop(k)
             else:
                 checkpoint_state_dict.pop(k)
-                print(k)
+                print(f'Warning: Key {k} is not in model state dict')
 
         model.load_state_dict(checkpoint_state_dict, strict=False)
 
     return model, bk_dim
+
+if __name__ == '__main__':
+    import time
+    model, feat = build_yolov2(pretrained=True, class_num=4)
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    model = model.to(device)
+
+    # [B, C, H, W]
+    x = torch.randn(1, 3, 224, 224).to(device)
+    for i in range(10):
+        # star time
+        t0 = time.time()
+        y = model(x)
+        print('time', time.time() - t0)
+
+    print(y.size())

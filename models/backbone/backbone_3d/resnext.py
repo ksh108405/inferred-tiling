@@ -5,7 +5,7 @@ from torch.autograd import Variable
 from torch.hub import load_state_dict_from_url
 from functools import partial
 
-__all__ = ['resnext50', 'resnext101', 'resnet152']
+__all__ = ['resnext50', 'resnext101', 'resnext152']
 
 
 model_urls = {

@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.hub import load_state_dict_from_url
 
 
-__all__ = ['resnext50', 'resnext101', 'resnet152']
+__all__ = ['ShuffleNetV2']
 
 
 model_urls = {
@@ -191,10 +191,10 @@ def load_weight(model, arch):
             shape_checkpoint = tuple(new_state_dict[k].shape)
             if shape_model != shape_checkpoint:
                 new_state_dict.pop(k)
-                print(k)
+                print(f'Warning: shape mismatch for {k}: {shape_model} != {shape_checkpoint}')
         else:
             new_state_dict.pop(k)
-            print(k)
+            print(f'Warning: key {k} is not in model state dict')
 
     model.load_state_dict(new_state_dict)
         
@@ -222,7 +222,7 @@ if __name__ == '__main__':
     model = model.to(device)
 
     # [B, C, T, H, W]
-    x = torch.randn(1, 3, 16, 64, 64).to(device)
+    x = torch.randn(1, 3, 16, 224, 224).to(device)
     for i in range(10):
         # star time
         t0 = time.time()
