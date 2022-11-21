@@ -30,6 +30,7 @@ class UCF_JHMDB_Evaluator(object):
                  gt_folder=None,
                  save_path=None,
                  inferred_tiling=False,
+                 it_threshold=0.5,
                  d_cfg=None):
         self.data_root = data_root
         self.dataset = dataset
@@ -41,6 +42,7 @@ class UCF_JHMDB_Evaluator(object):
         self.iou_thresh = iou_thresh
         self.collate_fn = collate_fn
         self.inferred_tiling = inferred_tiling
+        self.it_threshold = it_threshold
 
         self.d_cfg = d_cfg
 
@@ -83,7 +85,7 @@ class UCF_JHMDB_Evaluator(object):
             batch_size=self.batch_size,
             shuffle=False,
             collate_fn=self.collate_fn, 
-            num_workers=4,
+            num_workers=6,
             drop_last=False,
             pin_memory=True
             )
@@ -156,7 +158,12 @@ class UCF_JHMDB_Evaluator(object):
                     orig_size = target['orig_size']
                     bboxes = rescale_bboxes(bboxes, orig_size)
                     if self.inferred_tiling:
-                        inferred_tile_coords = rescale_bboxes(bboxes_it, orig_size)
+                        bbox_idx_list = np.argwhere(scores > self.it_threshold)
+                        if bbox_idx_list.size != 0:
+                            bboxes_it_filtered = np.squeeze(bboxes_it[bbox_idx_list], axis=1)
+                            inferred_tile_coords = rescale_bboxes(bboxes_it_filtered, orig_size)
+                        else:
+                            inferred_tile_coords = np.array([])
 
                     if not os.path.exists('results'):
                         os.mkdir('results')
