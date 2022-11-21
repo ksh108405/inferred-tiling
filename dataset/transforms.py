@@ -333,4 +333,4 @@ class BaseTransform(object):
         target = torch.as_tensor(target).float()
         target_nf = torch.as_tensor(target_nf).float()
 
-        return video_clip, target, target_nf, None
+        return video_clip, target, target_nf, None, None

@@ -140,7 +140,7 @@ class UCF_JHMDB_Evaluator(object):
             with torch.no_grad():
                 # inference
                 batch_scores, batch_labels, batch_bboxes, batch_bboxes_it \
-                    = model(batch_video_clip, inferred_tiles, it_bboxes)
+                    = model(batch_video_clip, inferred_tiles, ot_bboxes=it_bboxes)
 
                 # process batch
                 for bi in range(len(batch_scores)):
