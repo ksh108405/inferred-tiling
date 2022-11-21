@@ -185,6 +185,8 @@ class Augmentation(object):
                 cropped_tiles = None
             if cropped_bboxes == []:
                 cropped_bboxes = None
+            else:
+                cropped_bboxes = np.array(cropped_bboxes, dtype=np.float64)
         else:
             cropped_tiles = None
 

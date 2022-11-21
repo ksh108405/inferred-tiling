@@ -52,11 +52,9 @@ class Attention(nn.Module):
 
         attn = self.attend(dots)[0, 0, 0]  # only choose attention score of first tile
 
-        for i, att in enumerate(attn):
-            v[0, i] = v[0, i] * att
-        v = v.sum(dim=1)  # tensor(1, num_obj, 425, 7, 7) -> tensor(1, 425, 7, 7)
+        ret = (v * attn.view(1, -1, 1, 1, 1)).sum(dim=1)  # tensor(1, num_obj, 425, 7, 7) -> tensor(1, 425, 7, 7)
 
-        return v
+        return ret
 
 
 class SelfAttAggregator(nn.Module):
@@ -69,10 +67,15 @@ class SelfAttAggregator(nn.Module):
         )
 
         self.attention = Attention(32 * img_size ** 2)
+        self.whole_bbox = torch.tensor([[0., 0., 1., 1.]])
 
     def forward(self, tile_list, bbox_list):  # [tensor(1, 425, 7, 7), ...]
         tile_list_ = [self.to_patch_embedding(tile) for tile in tile_list]  # [tensor(1, 7, 7, 64), ...]
-        pe_list = [pe_sincos_2d(tile, bbox) for tile, bbox in zip(tile_list_, [[0., 0., 1., 1.]] + bbox_list)]  # [tensor(1, 49, 64), ...]
+        if bbox_list is not None:
+            bbox_list = torch.cat((self.whole_bbox, bbox_list), 0)
+        else:
+            bbox_list = self.whole_bbox
+        pe_list = [pe_sincos_2d(tile, bbox) for tile, bbox in zip(tile_list_, bbox_list)]  # [tensor(1, 49, 64), ...]
         tile_list_ = [rearrange(rearrange(tile, 'b ... d -> b (...) d') + pe, 'b ... -> b (...)')
                        for tile, pe in zip(tile_list_, pe_list)]  # [tensor(1, 3136), ...]
         tile_list_ = torch.stack(tile_list_, dim=1)  # tensor(1, 1 + num_obj, 3136)

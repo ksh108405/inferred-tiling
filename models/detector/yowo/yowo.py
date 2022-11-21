@@ -383,7 +383,7 @@ class YOWO(nn.Module):
                     object_tiles = object_tiles.permute(1, 0, 2, 3, 4)
                     for inferred_tile in object_tiles:
                         feat_2d_it.append(self.backbone_2d_it(inferred_tile))  # [B, C1, H, W]
-                    feat_2d = self.it_fa(feat_2d_it, targets['boxes_ot'])  # [B, C1, H, W]
+                    feat_2d = self.it_fa(feat_2d_it, targets[0]['boxes_ot'])  # [B, C1, H, W]
                 else:
                     raise Exception('Unknown inferred tiling feature aggregation method.')
 
