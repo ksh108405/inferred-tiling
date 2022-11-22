@@ -23,6 +23,8 @@ from utils.solver.warmup_schedule import build_warmup
 from config import build_dataset_config, build_model_config
 from models.detector import build_model
 
+from telegram_alerter import send_train_finished
+
 GLOBAL_SEED = 42
 
 
@@ -385,6 +387,8 @@ def train():
             if args.distributed:
                 # wait for all processes to synchronize
                 dist.barrier()
+
+    send_train_finished()
 
 
 if __name__ == '__main__':

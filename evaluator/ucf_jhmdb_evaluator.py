@@ -13,6 +13,8 @@ from utils.box_ops import rescale_bboxes
 from .cal_frame_mAP import evaluate_frameAP
 from .cal_video_mAP import evaluate_videoAP
 
+from telegram_alerter import send_eval_finished
+
 
 class UCF_JHMDB_Evaluator(object):
     def __init__(self,
@@ -241,6 +243,7 @@ class UCF_JHMDB_Evaluator(object):
                               self.save_path, self.dataset, show_pr_curve)
         for metric in metric_list:
             print(metric)
+        send_eval_finished(self.it_threshold, metric_list)
 
 
     def evaluate_video_map(self, model):

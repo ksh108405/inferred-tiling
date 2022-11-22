@@ -10,3 +10,4 @@ det_results
 /.idea/
 /evaluator/eval_results/
 /results/
+/telegram_alerter.py
