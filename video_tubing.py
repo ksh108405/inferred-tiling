@@ -4,7 +4,7 @@ import os
 import time
 import numpy as np
 import torch
-import imageio
+import json
 from PIL import Image
 
 from dataset.transforms import BaseTransform
@@ -112,15 +112,15 @@ def detect(args, d_cfg, model, device, transform, class_names, class_colors):
             orig_h, orig_w = frame.shape[:2]
 
             # transform
-            x, _ = transform(video_clip)
+            x, _, _, _, _ = transform(video_clip)
             # List [T, 3, H, W] -> [3, T, H, W]
             x = torch.stack(x, dim=1)
             x = x.unsqueeze(0).to(device)  # [B, 3, T, H, W], B=1
 
             # inference
-            outputs = model(x)
+            outputs = model(x, None)
 
-            batch_scores, batch_labels, batch_bboxes = outputs
+            batch_scores, batch_labels, batch_bboxes, _ = outputs
             # batch size = 1
             scores = batch_scores[0]
             labels = batch_labels[0]
@@ -202,11 +202,11 @@ def detect(args, d_cfg, model, device, transform, class_names, class_colors):
                     # 3. confidence check
                     if cur_frame_results['scores'][matched_bbox] > args.tube_end_thresh:
                         # maintain
-                        action_tubes[prog_tube_idx]['bboxes'].append(cur_frame_results['bboxes'][matched_bbox])
+                        action_tubes[prog_tube_idx]['bboxes'].append(cur_frame_results['bboxes'][matched_bbox].tolist())
                         tubed_bbox_idx.append(matched_bbox)
                         continue
             # tube not maintainable. finishing tube.
-            action_tubes[prog_tube_idx]['end_frame'] = results_dict[cur_frame_idx - 1]['frame_idx']
+            action_tubes[prog_tube_idx]['end_frame'] = int(results_dict[cur_frame_idx - 1]['frame_idx'])
             finishing_tube_idx_list.append(prog_tube_list_idx)
 
         # remove finished tubes
@@ -221,16 +221,16 @@ def detect(args, d_cfg, model, device, transform, class_names, class_colors):
             # check if the bbox is start-able
             if score > args.tube_start_thresh:
                 # start new tube
-                action_tubes.append({'start_frame': cur_frame_results['frame_idx'],
+                action_tubes.append({'start_frame': int(cur_frame_results['frame_idx']),
                                      'end_frame': 0,
-                                     'label': cur_frame_results['labels'][bbox_idx],
-                                     'bboxes': [cur_frame_results['bboxes'][bbox_idx]]})
+                                     'label': int(cur_frame_results['labels'][bbox_idx]),
+                                     'bboxes': [cur_frame_results['bboxes'][bbox_idx].tolist()]})
                 progressing_tube_idx_list.append(len(action_tubes) - 1)
                 break
     for prog_tube_idx in progressing_tube_idx_list:
-        action_tubes[prog_tube_idx]['end_frame'] = video_length - 1
+        action_tubes[prog_tube_idx]['end_frame'] = int(video_length - 1)
 
-    print(action_tubes)
+    print(json.dumps(action_tubes))
 
     if args.save_vid:
         tube_bboxes = []
