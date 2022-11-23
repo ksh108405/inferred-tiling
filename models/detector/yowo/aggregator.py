@@ -67,7 +67,7 @@ class SelfAttAggregator(nn.Module):
         )
 
         self.attention = Attention(32 * img_size ** 2)
-        self.whole_bbox = torch.tensor([[0., 0., 1., 1.]])
+        self.whole_bbox = torch.tensor([[0., 0., 1., 1.]], device='cuda')
 
     def forward(self, tile_list, bbox_list):  # [tensor(1, 425, 7, 7), ...]
         tile_list_ = [self.to_patch_embedding(tile) for tile in tile_list]  # [tensor(1, 7, 7, 64), ...]
