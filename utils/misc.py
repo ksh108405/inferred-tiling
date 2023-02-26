@@ -159,6 +159,7 @@ def load_weight(model, path_to_ckpt=None):
     model_state_dict = model.state_dict()
     # check
     for k in list(checkpoint_state_dict.keys()):
+        print(f'Loading {k} from {path_to_ckpt}')
         if k in model_state_dict:
             shape_model = tuple(model_state_dict[k].shape)
             shape_checkpoint = tuple(checkpoint_state_dict[k].shape)

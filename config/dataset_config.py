@@ -59,9 +59,9 @@ dataset_config = {
 
     'aihub_park': {
         # dataset
-        'data_root': '/media/seokhoon/dataset_drive/grad_proj',
+        'data_root': '/mnt/e/datasets/grad_proj',
         # 'data_root': 'D:/python_work/spatial-temporal_action_detection/dataset/ucf24',
-        'gt_folder': '/media/seokhoon/dataset_drive/grad_proj/groundtruths_park/',
+        'gt_folder': '/mnt/e/datasets/grad_proj/groundtruths_park/',
         # input size
         'train_size': 224,
         'test_size': 224,

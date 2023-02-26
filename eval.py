@@ -50,7 +50,7 @@ def parse_args():
                         help='Share weights between whole-image net and object-tile net')
     parser.add_argument('--it_feature_agg', default='sum', type=str, choices=['sum', 'self-att'],
                         help='Share weights between whole-image net and object-tile net')
-    parser.add_argument('--it_conf', default=0.1, type=float,
+    parser.add_argument('--it_conf', default=0.25, type=float,
                         help='Confidence threshold of picking inferred tile (model default 0.05)')
 
     return parser.parse_args()
