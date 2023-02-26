@@ -28,6 +28,8 @@ def parse_args():
                         help='use cuda.')
     parser.add_argument('--save_folder', default='det_results/', type=str,
                         help='Dir to save results')
+    parser.add_argument('--save_file_name', default='detection.mp4', type=str,
+                        help='Dir to save visualization results')
     parser.add_argument('-vs', '--vis_thresh', default=0.3, type=float,
                         help='threshold for visualization')
     parser.add_argument('--video', default='9Y_l9NsnYE0.mp4', type=str,
@@ -98,7 +100,7 @@ def multi_hot_vis(args, frame, out_bboxes, orig_w, orig_h, class_names, act_pose
 @torch.no_grad()
 def detect(args, d_cfg, model, device, transform, class_names, class_colors):
     # path to save 
-    save_path = os.path.join(args.save_folder, 'demo', 'videos')
+    save_path = os.path.join(args.save_folder)
     os.makedirs(save_path, exist_ok=True)
 
     # path to video
@@ -106,16 +108,19 @@ def detect(args, d_cfg, model, device, transform, class_names, class_colors):
 
     # video
     video = cv2.VideoCapture(path_to_video)
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    save_size = (640, 480)
-    save_name = os.path.join(save_path, 'detection.avi')
-    fps = 20.0
-    out = cv2.VideoWriter(save_name, fourcc, fps, save_size)
+    video_length = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_fps = video.get(cv2.CAP_PROP_FPS)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    save_size = (1920, 1080)
+    save_name = os.path.join(save_path, args.save_file_name)
+    out = cv2.VideoWriter(save_name, fourcc, video_fps, save_size)
 
     # run
     video_clip = []
     image_list = []
+    frame_idx = 0
     while(True):
+        frame_idx += 1
         ret, frame = video.read()
         
         if ret:
@@ -145,7 +150,7 @@ def detect(args, d_cfg, model, device, transform, class_names, class_colors):
             t0 = time.time()
             # inference
             outputs = model(x)
-            print("inference time ", time.time() - t0, "s")
+            print(f"{frame_idx}/{video_length} : inference time ", time.time() - t0, "s")
 
             # vis detection results
             if args.dataset in ['ava_v2.2']:
@@ -162,7 +167,7 @@ def detect(args, d_cfg, model, device, transform, class_names, class_colors):
                     class_names=class_names,
                     act_pose=args.pose
                     )
-            elif args.dataset in ['ucf24']:
+            elif args.dataset in ['ucf24', 'aihub_park']:
                 batch_scores, batch_labels, batch_bboxes = outputs
                 # batch size = 1
                 scores = batch_scores[0]
@@ -205,7 +210,7 @@ def detect(args, d_cfg, model, device, transform, class_names, class_colors):
     if args.gif:
         save_name = os.path.join(save_path, 'detect.gif')
         print('generating GIF ...')
-        imageio.mimsave(save_name, image_list, fps=fps)
+        imageio.mimsave(save_name, image_list, fps=video_fps)
         print('GIF done: {}'.format(save_name))
 
 

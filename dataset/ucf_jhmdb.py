@@ -6,6 +6,7 @@ import os
 import random
 import numpy as np
 import glob
+import time
 
 import torch
 from torch.utils.data import Dataset
@@ -67,6 +68,8 @@ class UCF_JHMDB_Dataset(Dataset):
             self.num_classes = 21
         elif dataset == 'aihub_park':
             self.num_classes = 4
+        elif dataset == 'aihub_park_subset':
+            self.num_classes = 1
 
     def __len__(self):
         return self.num_samples
@@ -101,7 +104,7 @@ class UCF_JHMDB_Dataset(Dataset):
             max_num = len(os.listdir(img_folder))
         elif self.dataset == 'jhmdb21':
             max_num = len(os.listdir(img_folder)) - 1
-        elif self.dataset == 'aihub_park':
+        elif self.dataset in ['aihub_park', 'aihub_park_subset']:
             max_num = len(os.listdir(img_folder))
 
         # sampling rate
@@ -112,6 +115,7 @@ class UCF_JHMDB_Dataset(Dataset):
 
         # load images
         video_clip = []
+        t0 = time.time()
         for i in reversed(range(self.len_clip)):
             # make it as a loop
             img_id_temp = img_id - i * d
@@ -127,7 +131,7 @@ class UCF_JHMDB_Dataset(Dataset):
             elif self.dataset == 'jhmdb21':
                 path_tmp = os.path.join(self.data_root, 'rgb-images', img_split[1], img_split[2],
                                         '{:05d}.png'.format(img_id_temp))
-            elif self.dataset == 'aihub_park':
+            elif self.dataset in ['aihub_park', 'aihub_park_subset']:
                 path_tmp = os.path.join(self.data_root, 'rgb-images', img_split[1], img_split[2],
                                         '{:05d}.jpg'.format(img_id_temp))
 
@@ -140,6 +144,7 @@ class UCF_JHMDB_Dataset(Dataset):
             video_clip.append(frame)
 
             frame_id = img_split[1] + '_' + img_split[2] + '_' + img_split[3]
+        # print(f'{time.time() - t0:0.3f}', end='\t')
 
         # load an annotation
         if os.path.getsize(label_path):
@@ -269,6 +274,8 @@ class UCF_JHMDB_VIDEO_Dataset(Dataset):
             self.num_classes = 21
         elif dataset == 'aihub_park':
             self.num_classes = 4
+        elif dataset == 'aihub_park_subset':
+            self.num_classes = 1
 
     def set_video_data(self, line):
         self.line = line
@@ -280,7 +287,7 @@ class UCF_JHMDB_VIDEO_Dataset(Dataset):
             self.label_paths = sorted(glob.glob(os.path.join(self.img_folder, '*.jpg')))
         elif self.dataset == 'jhmdb21':
             self.label_paths = sorted(glob.glob(os.path.join(self.img_folder, '*.png')))
-        elif self.dataset == 'aihub_park':
+        elif self.dataset in ['aihub_park', 'aihub_park_subset']:
             self.label_paths = sorted(glob.glob(os.path.join(self.img_folder, '*.jpg')))
 
     def __len__(self):
@@ -307,7 +314,7 @@ class UCF_JHMDB_VIDEO_Dataset(Dataset):
             img_name = os.path.join(video_class, video_file, '{:05d}.jpg'.format(img_id))
         elif self.dataset == 'jhmdb21':
             img_name = os.path.join(video_class, video_file, '{:05d}.png'.format(img_id))
-        elif self.dataset == 'aihub_park':
+        elif self.dataset in ['aihub_park', 'aihub_park_subset']:
             img_name = os.path.join(video_class, video_file, '{:05d}.jpg'.format(img_id))
 
         # load video clip
@@ -327,7 +334,7 @@ class UCF_JHMDB_VIDEO_Dataset(Dataset):
             elif self.dataset == 'jhmdb21':
                 path_tmp = os.path.join(self.data_root, 'rgb-images', video_class, video_file,
                                         '{:05d}.png'.format(img_id_temp))
-            elif self.dataset == 'aihub_park':
+            elif self.dataset in ['aihub_park', 'aihub_park_subset']:
                 path_tmp = os.path.join(self.data_root, 'rgb-images', video_class, video_file,
                                         '{:05d}.jpg'.format(img_id_temp))
             frame = Image.open(path_tmp).convert('RGB')
